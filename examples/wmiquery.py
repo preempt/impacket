@@ -10,7 +10,7 @@
 #
 #              e.g.: select name from win32_account
 #              e.g.: describe win32_process
-# 
+#
 # Author:
 #  Alberto Solino (@agsolino)
 #
@@ -71,7 +71,7 @@ if __name__ == '__main__':
                 print(os.getcwd())
             else:
                 os.chdir(s)
-    
+
         def printReply(self, iEnum):
             printHeader = True
             while True:
@@ -101,7 +101,7 @@ if __name__ == '__main__':
                         raise
                     else:
                         break
-            iEnum.RemRelease() 
+            iEnum.RemRelease()
 
         def default(self, line):
             line = line.strip('\n')
@@ -113,7 +113,6 @@ if __name__ == '__main__':
                 iEnumWbemClassObject.RemRelease()
             except Exception as e:
                 logging.error(str(e))
-         
         def emptyline(self):
             pass
 
@@ -150,7 +149,7 @@ if __name__ == '__main__':
     if len(sys.argv)==1:
         parser.print_help()
         sys.exit(1)
- 
+
     options = parser.parse_args()
 
     if options.debug is True:
@@ -214,3 +213,4 @@ if __name__ == '__main__':
             dcom.disconnect()
         except:
             pass
+        sys.exit(1)

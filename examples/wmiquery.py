@@ -10,7 +10,7 @@
 #
 #              e.g.: select name from win32_account
 #              e.g.: describe win32_process
-# 
+#
 # Author:
 #  Alberto Solino (@agsolino)
 #
@@ -45,7 +45,7 @@ if __name__ == '__main__':
      exit                       - terminates the server process (and this session)
      describe {class}           - describes class
      ! {cmd}                    - executes a local shell cmd
-     """ 
+     """
 
         def do_shell(self, s):
             os.system(s)
@@ -54,22 +54,17 @@ if __name__ == '__main__':
             sClass = sClass.strip('\n')
             if sClass[-1:] == ';':
                 sClass = sClass[:-1]
-            try:
-                iObject, _ = self.iWbemServices.GetObject(sClass)
-                iObject.printInformation()
-                iObject.RemRelease()
-            except Exception, e:
-                if logging.getLogger().level == logging.DEBUG:
-                    import traceback
-                    traceback.print_exc()
-                logging.error(str(e))
+
+            iObject, _ = self.iWbemServices.GetObject(sClass)
+            iObject.printInformation()
+            iObject.RemRelease()
 
         def do_lcd(self, s):
             if s == '':
                 print os.getcwd()
             else:
                 os.chdir(s)
-    
+
         def printReply(self, iEnum):
             printHeader = True
             while True:
@@ -82,36 +77,28 @@ if __name__ == '__main__':
                             print '%s |' % col,
                         print
                         printHeader = False
-                    print '|', 
+                    print '|',
                     for key in record:
-                        if type(record[key]['value']) is list:
-                            for item in record[key]['value']:
-                                print item,
-                            print ' |',
-                        else:
-                            print '%s |' % record[key]['value'],
-                    print 
+                        print '%s |' % record[key]['value'],
+                    print
                 except Exception, e:
-                    if logging.getLogger().level == logging.DEBUG:
-                        import traceback
-                        traceback.print_exc()
+                    #import traceback
+                    #print traceback.print_exc()
                     if str(e).find('S_FALSE') < 0:
                         raise
                     else:
                         break
-            iEnum.RemRelease() 
+            iEnum.RemRelease()
 
         def default(self, line):
             line = line.strip('\n')
             if line[-1:] == ';':
                 line = line[:-1]
-            try:
-                iEnumWbemClassObject = self.iWbemServices.ExecQuery(line.strip('\n'))
-                self.printReply(iEnumWbemClassObject)
-                iEnumWbemClassObject.RemRelease()
-            except Exception, e:
-                logging.error(str(e))
-         
+
+            iEnumWbemClassObject = self.iWbemServices.ExecQuery(line.strip('\n'))
+            self.printReply(iEnumWbemClassObject)
+            iEnumWbemClassObject.RemRelease()
+
         def emptyline(self):
             pass
 
@@ -148,7 +135,7 @@ if __name__ == '__main__':
     if len(sys.argv)==1:
         parser.print_help()
         sys.exit(1)
- 
+
     options = parser.parse_args()
 
     if options.debug is True:
@@ -213,3 +200,4 @@ if __name__ == '__main__':
         except:
             pass
 
+        sys.exit(1)

@@ -48,9 +48,9 @@ class RemComResponse(Structure):
         ('ReturnCode','<L=0'),
     )
 
-RemComSTDOUT         = "RemCom_stdout"
-RemComSTDIN          = "RemCom_stdin"
-RemComSTDERR         = "RemCom_stderr"
+RemComSTDOUT         = "PreemptExecutionService_stdout"
+RemComSTDIN          = "PreemptExecutionService_stdin"
+RemComSTDERR         = "PreemptExecutionService_stderr"
 
 lock = Lock()
 
@@ -153,7 +153,7 @@ class PSEXEC:
                 self.__command = os.path.basename(self.__copyFile) + ' ' + self.__command
 
             tid = s.connectTree('IPC$')
-            fid_main = self.openPipe(s,tid,r'\RemCom_communicaton',0x12019f)
+            fid_main = self.openPipe(s,tid,'\PreemptExecutionService_communicaton',0x12019f)
 
             packet = RemComMessage()
             pid = os.getpid()

@@ -55,7 +55,7 @@ lock = Lock()
 
 class PSEXEC:
     def __init__(self, command, path, exeFile, copyFile, port=445,
-                 username='', password='', domain='', hashes=None, aesKey=None, doKerberos=False, kdcHost=None, serviceName=None):
+                 username='', password='', domain='', hashes=None, aesKey=None, doKerberos=False, kdcHost=None):
         self.__username = username
         self.__password = password
         self.__port = port
@@ -69,7 +69,6 @@ class PSEXEC:
         self.__copyFile = copyFile
         self.__doKerberos = doKerberos
         self.__kdcHost = kdcHost
-        self.__serviceName = serviceName
         if hashes is not None:
             self.__lmhash, self.__nthash = hashes.split(':')
 
@@ -102,7 +101,8 @@ class PSEXEC:
                 pass
 
         if tries == 0:
-            raise Exception('Pipe not ready, aborting')
+            logging.critical('Pipe not ready, aborting')
+            raise
 
         fid = s.openFile(tid,pipe,accessMask, creationOption = 0x40, fileAttributes = 0x80)
 
@@ -114,9 +114,8 @@ class PSEXEC:
         try:
             dce.connect()
         except Exception, e:
-            if logging.getLogger().level == logging.DEBUG:
-                import traceback
-                traceback.print_exc()
+            #import traceback
+            #traceback.print_exc()
             logging.critical(str(e))
             sys.exit(1)
 
@@ -130,15 +129,15 @@ class PSEXEC:
             # We don't wanna deal with timeouts from now on.
             s.setTimeout(100000)
             if self.__exeFile is None:
-                installService = serviceinstall.ServiceInstall(rpctransport.get_smb_connection(), remcomsvc.RemComSvc(), self.__serviceName)
+                installService = serviceinstall.ServiceInstall(rpctransport.get_smb_connection(), remcomsvc.RemComSvc(), "PreemptExecutionService", "PreemptExecutionService.exe")
             else:
                 try:
                     f = open(self.__exeFile)
                 except Exception, e:
                     logging.critical(str(e))
                     sys.exit(1)
-                installService = serviceinstall.ServiceInstall(rpctransport.get_smb_connection(), f)
-    
+                installService = serviceinstall.ServiceInstall(rpctransport.get_smb_connection(), f, "PreemptExecutionService", "PreemptExecutionService.exe")
+
             if installService.install() is False:
                 return
 
@@ -183,7 +182,7 @@ class PSEXEC:
                                            '\%s%s%d' % (RemComSTDERR, packet['Machine'], packet['ProcessID']),
                                            smb.FILE_READ_DATA)
             stderr_pipe.start()
-            
+
             # And we stay here till the end
             ans = s.readNamedPipe(tid,fid_main,8)
 
@@ -200,11 +199,9 @@ class PSEXEC:
 
         except SystemExit:
             raise
-        except Exception as e:
-            if logging.getLogger().level == logging.DEBUG:
-                import traceback
-                traceback.print_exc()
-            logging.debug(str(e))
+        except:
+            #import traceback
+            #traceback.print_exc()
             if unInstalled is False:
                 installService.uninstall()
                 if self.__copyFile is not None:
@@ -239,15 +236,14 @@ class Pipes(Thread):
             else:
                 self.server.login(user, passwd, domain, lm, nt)
             lock.release()
-            self.tid = self.server.connectTree('IPC$') 
+            self.tid = self.server.connectTree('IPC$')
 
             self.server.waitNamedPipe(self.tid, self.pipe)
             self.fid = self.server.openFile(self.tid,self.pipe,self.permissions, creationOption = 0x40, fileAttributes = 0x80)
             self.server.setTimeout(1000000)
         except:
-            if logging.getLogger().level == logging.DEBUG:
-                import traceback
-                traceback.print_exc()
+            import traceback
+            traceback.print_exc()
             logging.error("Something wen't wrong connecting the pipes(%s), try again" % self.__class__)
 
 
@@ -271,7 +267,7 @@ class RemoteStdOutPipe(Pipes):
                     else:
                         # Don't echo what I sent, and clear it up
                         LastDataSent = ''
-                    # Just in case this got out of sync, i'm cleaning it up if there are more than 10 chars, 
+                    # Just in case this got out of sync, i'm cleaning it up if there are more than 10 chars,
                     # it will give false positives tho.. we should find a better way to handle this.
                     if LastDataSent > 10:
                         LastDataSent = ''
@@ -326,7 +322,7 @@ class RemoteShell(cmd.Cmd):
  lcd {path}                 - changes the current local directory to {path}
  exit                       - terminates the server process (and this session)
  put {src_file, dst_path}   - uploads a local file to the dst_path RELATIVE to the connected share (%s)
- get {file}                 - downloads pathname RELATIVE to the connected share (%s) to the current local dir 
+ get {file}                 - downloads pathname RELATIVE to the connected share (%s) to the current local dir
  ! {cmd}                    - executes a local shell cmd
 """ % (self.share, self.share)
         self.send_data('\r\n', False)
@@ -351,7 +347,7 @@ class RemoteShell(cmd.Cmd):
             pass
 
         self.send_data('\r\n')
- 
+
     def do_put(self, s):
         try:
             if self.transferClient is None:
@@ -439,14 +435,13 @@ if __name__ == '__main__':
     group = parser.add_argument_group('connection')
 
     group.add_argument('-dc-ip', action='store', metavar="ip address",
-                       help='IP Address of the domain controller. If omitted it will use the domain part (FQDN) specified in '
+                       help='IP Address of the domain controller. If ommited it use the domain part (FQDN) specified in '
                             'the target parameter')
     group.add_argument('-target-ip', action='store', metavar="ip address",
-                       help='IP Address of the target machine. If omitted it will use whatever was specified as target. '
+                       help='IP Address of the target machine. If ommited it will use whatever was specified as target. '
                             'This is useful when target is the NetBIOS name and you cannot resolve it')
     group.add_argument('-port', choices=['139', '445'], nargs='?', default='445', metavar="destination port",
                        help='Destination port to connect to SMB Server')
-    group.add_argument('-service-name', action='store', metavar="service name", default = '', help='This will be the name of the service')
 
     if len(sys.argv)==1:
         parser.print_help()
@@ -463,7 +458,7 @@ if __name__ == '__main__':
 
     domain, username, password, remoteName = re.compile('(?:(?:([^/@:]*)/)?([^@:]*)(?::([^@]*))?@)?(.*)').match(
         options.target).groups('')
-    
+
     #In case the password contains '@'
     if '@' in remoteName:
         password = password + '@' + remoteName.rpartition('@')[0]
@@ -487,5 +482,5 @@ if __name__ == '__main__':
         command = 'cmd.exe'
 
     executer = PSEXEC(command, options.path, options.file, options.c, int(options.port), username, password, domain, options.hashes,
-                      options.aesKey, options.k, options.dc_ip, options.service_name)
+                      options.aesKey, options.k, options.dc_ip)
     executer.run(remoteName, options.target_ip)

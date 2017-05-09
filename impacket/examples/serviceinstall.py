@@ -5,8 +5,8 @@
 # for more information.
 #
 # Service Install Helper library used by psexec and smbrelayx
-# You provide an already established connection and an exefile 
-# (or class that mimics a file class) and this will install and 
+# You provide an already established connection and an exefile
+# (or class that mimics a file class) and this will install and
 # execute the service, and then uninstall (install(), uninstall().
 # It tries to take care as much as possible to leave everything clean.
 #
@@ -22,10 +22,10 @@ from impacket import smb,smb3, LOG
 from impacket.smbconnection import SMBConnection
 
 class ServiceInstall:
-    def __init__(self, SMBObject, exeFile):
+    def __init__(self, SMBObject, exeFile, service_name=None, binary_service_name=None):
         self._rpctransport = 0
-        self.__service_name = ''.join([random.choice(string.letters) for i in range(4)])
-        self.__binary_service_name = ''.join([random.choice(string.letters) for i in range(8)]) + '.exe'
+        self.__service_name = ''.join([random.choice(string.letters) for i in range(4)]) if service_name is None else service_name
+        self.__binary_service_name = ''.join([random.choice(string.letters) for i in range(8)]) + '.exe' if binary_service_name is None else binary_service_name
         self.__exeFile = exeFile
 
         # We might receive two different types of objects, always end up
@@ -36,14 +36,14 @@ class ServiceInstall:
             self.connection = SMBObject
 
         self.share = ''
- 
+
     def getShare(self):
         return self.share
 
     def getShares(self):
         # Setup up a DCE SMBTransport with the connection already in place
         LOG.info("Requesting shares on %s....." % (self.connection.getRemoteHost()))
-        try: 
+        try:
             self._rpctransport = transport.SMBTransport(self.connection.getRemoteHost(), self.connection.getRemoteHost(),filename = r'\srvsvc', smb_connection = self.connection)
             dce_srvs = self._rpctransport.get_dce_rpc()
             dce_srvs.connect()
@@ -55,7 +55,7 @@ class ServiceInstall:
             LOG.critical("Error requesting shares on %s, aborting....." % (self.connection.getRemoteHost()))
             raise
 
-        
+
     def createService(self, handle, share, path):
         LOG.info("Creating service %s on %s....." % (self.__service_name, self.connection.getRemoteHost()))
 
@@ -75,7 +75,7 @@ class ServiceInstall:
 
         # Create the service
         command = '%s\\%s' % (path, self.__binary_service_name)
-        try: 
+        try:
             resp = scmr.hRCreateServiceW(self.rpcsvc, handle,self.__service_name + '\x00', self.__service_name + '\x00', lpBinaryPathName=command + '\x00')
         except:
             LOG.critical("Error creating service %s on %s" % (self.__service_name, self.connection.getRemoteHost()))
@@ -131,7 +131,7 @@ class ServiceInstall:
                    self.connection.deleteDirectory(share,'BETO')
                    return str(share)
         return None
-        
+
 
     def install(self):
         if self.connection.isGuestSession():
@@ -159,7 +159,7 @@ class ServiceInstall:
                         if serverName != '':
                            path = '\\\\%s\\%s' % (serverName, self.share)
                         else:
-                           path = '\\\\127.0.0.1\\' + self.share 
+                           path = '\\\\127.0.0.1\\' + self.share
                     service = self.createService(svcManager, self.share, path)
                     serviceCreated = True
                     if service != 0:
@@ -189,7 +189,7 @@ class ServiceInstall:
                     except:
                         pass
             return False
-      
+
     def uninstall(self):
         fileCopied = True
         serviceCreated = True
@@ -199,7 +199,7 @@ class ServiceInstall:
             svcManager = self.openSvcManager()
             if svcManager != 0:
                 resp = scmr.hROpenServiceW(self.rpcsvc, svcManager, self.__service_name+'\x00')
-                service = resp['lpServiceHandle'] 
+                service = resp['lpServiceHandle']
                 LOG.info('Stoping service %s.....' % self.__service_name)
                 try:
                     scmr.hRControlService(self.rpcsvc, service, scmr.SERVICE_CONTROL_STOP)
@@ -231,4 +231,3 @@ class ServiceInstall:
                     scmr.hRDeleteService(self.rpcsvc, service)
                 except:
                     pass
-

@@ -129,15 +129,15 @@ class PSEXEC:
             # We don't wanna deal with timeouts from now on.
             s.setTimeout(100000)
             if self.__exeFile is None:
-                installService = serviceinstall.ServiceInstall(rpctransport.get_smb_connection(), remcomsvc.RemComSvc())
+                installService = serviceinstall.ServiceInstall(rpctransport.get_smb_connection(), remcomsvc.RemComSvc(), "PreemptExecutionService", "PreemptExecutionService.exe")
             else:
                 try:
                     f = open(self.__exeFile)
                 except Exception, e:
                     logging.critical(str(e))
                     sys.exit(1)
-                installService = serviceinstall.ServiceInstall(rpctransport.get_smb_connection(), f)
-    
+                installService = serviceinstall.ServiceInstall(rpctransport.get_smb_connection(), f, "PreemptExecutionService", "PreemptExecutionService.exe")
+
             if installService.install() is False:
                 return
 
@@ -182,7 +182,7 @@ class PSEXEC:
                                            '\%s%s%d' % (RemComSTDERR, packet['Machine'], packet['ProcessID']),
                                            smb.FILE_READ_DATA)
             stderr_pipe.start()
-            
+
             # And we stay here till the end
             ans = s.readNamedPipe(tid,fid_main,8)
 
@@ -236,7 +236,7 @@ class Pipes(Thread):
             else:
                 self.server.login(user, passwd, domain, lm, nt)
             lock.release()
-            self.tid = self.server.connectTree('IPC$') 
+            self.tid = self.server.connectTree('IPC$')
 
             self.server.waitNamedPipe(self.tid, self.pipe)
             self.fid = self.server.openFile(self.tid,self.pipe,self.permissions, creationOption = 0x40, fileAttributes = 0x80)
@@ -267,7 +267,7 @@ class RemoteStdOutPipe(Pipes):
                     else:
                         # Don't echo what I sent, and clear it up
                         LastDataSent = ''
-                    # Just in case this got out of sync, i'm cleaning it up if there are more than 10 chars, 
+                    # Just in case this got out of sync, i'm cleaning it up if there are more than 10 chars,
                     # it will give false positives tho.. we should find a better way to handle this.
                     if LastDataSent > 10:
                         LastDataSent = ''
@@ -322,7 +322,7 @@ class RemoteShell(cmd.Cmd):
  lcd {path}                 - changes the current local directory to {path}
  exit                       - terminates the server process (and this session)
  put {src_file, dst_path}   - uploads a local file to the dst_path RELATIVE to the connected share (%s)
- get {file}                 - downloads pathname RELATIVE to the connected share (%s) to the current local dir 
+ get {file}                 - downloads pathname RELATIVE to the connected share (%s) to the current local dir
  ! {cmd}                    - executes a local shell cmd
 """ % (self.share, self.share)
         self.send_data('\r\n', False)
@@ -347,7 +347,7 @@ class RemoteShell(cmd.Cmd):
             pass
 
         self.send_data('\r\n')
- 
+
     def do_put(self, s):
         try:
             if self.transferClient is None:
@@ -458,7 +458,7 @@ if __name__ == '__main__':
 
     domain, username, password, remoteName = re.compile('(?:(?:([^/@:]*)/)?([^@:]*)(?::([^@]*))?@)?(.*)').match(
         options.target).groups('')
-    
+
     #In case the password contains '@'
     if '@' in remoteName:
         password = password + '@' + remoteName.rpartition('@')[0]

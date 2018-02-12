@@ -20,7 +20,7 @@
 # [X] Implement SMB2_SET_INFO
 # [ ] Implement SMB2_OPLOCK_BREAK
 # [X] Implement SMB3 signing 
-# [ ] Implement SMB3 encryption
+# [X] Implement SMB3 encryption
 # [ ] Add more backward compatible commands from the smb.py code
 # [ ] Fix up all the 'ToDo' comments inside the code
 #
@@ -32,6 +32,7 @@ import string
 import struct
 from binascii import a2b_hex
 from contextlib import contextmanager
+from pyasn1.type.univ import noValue
 
 from impacket import nmb, ntlm, uuid, crypto, LOG
 from impacket.smb3structs import *
@@ -626,7 +627,7 @@ class SMB3:
         # (Section 5.5.1)
         encryptedEncodedAuthenticator = cipher.encrypt(sessionKey, 11, encodedAuthenticator, None)
 
-        apReq['authenticator'] = None
+        apReq['authenticator'] = noValue
         apReq['authenticator']['etype'] = cipher.enctype
         apReq['authenticator']['cipher'] = encryptedEncodedAuthenticator
 

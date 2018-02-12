@@ -25,6 +25,7 @@ from binascii import unhexlify
 
 from pyasn1.codec.ber import encoder, decoder
 from pyasn1.error import SubstrateUnderrunError
+from pyasn1.type.univ import noValue
 
 from impacket import LOG
 from impacket.ldap.ldapasn1 import *
@@ -86,6 +87,10 @@ class LDAPConnection:
             self._dstPort = 636
             self._SSL = True
             self._dstHost = url[8:]
+        elif url.startswith('gc://'):
+            self._dstPort = 3268
+            self._SSL = False
+            self._dstHost = url[5:]
         else:
             raise LDAPSessionError(errorString="Unknown URL prefix: '%s'" % url)
 
@@ -247,7 +252,7 @@ class LDAPConnection:
         # (Section 5.5.1)
         encryptedEncodedAuthenticator = cipher.encrypt(sessionKey, 11, encodedAuthenticator, None)
 
-        apReq['authenticator'] = None
+        apReq['authenticator'] = noValue
         apReq['authenticator']['etype'] = cipher.enctype
         apReq['authenticator']['cipher'] = encryptedEncodedAuthenticator
 
@@ -389,6 +394,9 @@ class LDAPConnection:
                     for responseControl in responseControls:
                         if requestControl['controlType'] == CONTROL_PAGEDRESULTS:
                             if responseControl['controlType'] == CONTROL_PAGEDRESULTS:
+                                if hasattr(responseControl, 'getCookie') is not True:
+                                    responseControl = decoder.decode(encoder.encode(responseControl),
+                                                                 asn1Spec=KNOWN_CONTROLS[CONTROL_PAGEDRESULTS]())[0]
                                 if responseControl.getCookie():
                                     done = False
                                 requestControl.setCookie(responseControl.getCookie())

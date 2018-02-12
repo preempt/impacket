@@ -36,7 +36,7 @@ from impacket.dcerpc.v5.dcom import wmi
 from impacket.dcerpc.v5.dtypes import NULL
 
 OUTPUT_FILENAME = '__' + str(time.time())
-CODEC = sys.getdefaultencoding()
+CODEC = sys.stdout.encoding
 
 class WMIEXEC:
     def __init__(self, command='', username='', password='', domain='', hashes=None, aesKey=None, share=None,
@@ -148,6 +148,7 @@ class RemoteShell(cmd.Cmd):
                 logging.error(str(e))
 
     def do_get(self, src_path):
+
         try:
             import ntpath
             newPath = ntpath.normpath(ntpath.join(self.__pwd, src_path))
@@ -157,10 +158,14 @@ class RemoteShell(cmd.Cmd):
             logging.info("Downloading %s\\%s" % (drive, tail))
             self.__transferClient.getFile(drive[:-1]+'$', tail, fh.write)
             fh.close()
+
         except Exception, e:
             logging.error(str(e))
-            os.remove(filename)
-            pass
+
+            if os.path.exists(filename):
+                os.remove(filename)
+
+
 
     def do_put(self, s):
         try:
@@ -194,14 +199,14 @@ class RemoteShell(cmd.Cmd):
     def do_cd(self, s):
         self.execute_remote('cd ' + s)
         if len(self.__outputBuffer.strip('\r\n')) > 0:
-            print self.__outputBuffer.decode(CODEC)
-            self.__outputBuffer = ''
+            print self.__outputBuffer
+            self.__outputBuffer = u''
         else:
             self.__pwd = ntpath.normpath(ntpath.join(self.__pwd, s.decode(sys.stdin.encoding)))
             self.execute_remote('cd ')
-            self.__pwd = self.__outputBuffer.strip('\r\n').decode(CODEC)
-            self.prompt = unicode(self.__pwd + '>').encode(sys.stdout.encoding)
-            self.__outputBuffer = ''
+            self.__pwd = self.__outputBuffer.strip('\r\n')
+            self.prompt = unicode(self.__pwd + '>').encode(CODEC)
+            self.__outputBuffer = u''
 
     def default(self, line):
         # Let's try to guess if the user is trying to change drive
@@ -210,25 +215,31 @@ class RemoteShell(cmd.Cmd):
             self.execute_remote(line)
             if len(self.__outputBuffer.strip('\r\n')) > 0: 
                 # Something went wrong
-                print self.__outputBuffer.decode(CODEC)
-                self.__outputBuffer = ''
+                print self.__outputBuffer
+                self.__outputBuffer = u''
             else:
                 # Drive valid, now we should get the current path
                 self.__pwd = line
                 self.execute_remote('cd ')
                 self.__pwd = self.__outputBuffer.strip('\r\n')
-                self.prompt = unicode(self.__pwd + '>').encode(sys.stdout.encoding)
-                self.__outputBuffer = ''
+                self.prompt = unicode(self.__pwd + '>').encode(CODEC)
+                self.__outputBuffer = u''
         else:
             if line != '':
                 self.send_data(line)
 
     def get_output(self):
         def output_callback(data):
-            self.__outputBuffer += data
+            try:
+                self.__outputBuffer += data.decode(CODEC)
+            except UnicodeDecodeError, e:
+                logging.error('Decoding error detected, consider running chcp.com at the target,\nmap the result with '
+                              'https://docs.python.org/2.4/lib/standard-encodings.html\nand then execute wmiexec.py '
+                              'again with -codec and the corresponding codec')
+                self.__outputBuffer += data.decode(CODEC, errors='replace')
 
         if self.__noOutput is True:
-            self.__outputBuffer = ''
+            self.__outputBuffer = u''
             return
 
         while True:
@@ -255,15 +266,9 @@ class RemoteShell(cmd.Cmd):
         self.get_output()
 
     def send_data(self, data):
-        try:
-            self.execute_remote(data)
-            print self.__outputBuffer.decode(CODEC)
-        except UnicodeDecodeError, e:
-            logging.error('Decoding error detected, consider running chcp.com at the target,\nmap the result with '
-                          'https://docs.python.org/2.4/lib/standard-encodings.html\nand then execute wmiexec.py '
-                          'again with -codec and the corresponding codec')
-            print self.__outputBuffer
-        self.__outputBuffer = ''
+        self.execute_remote(data)
+        print self.__outputBuffer
+        self.__outputBuffer = u''
 
 class AuthFileSyntaxError(Exception):
     
@@ -359,6 +364,9 @@ if __name__ == '__main__':
 
     if options.codec is not None:
         CODEC = options.codec
+    else:
+        if CODEC is None:
+            CODEC = 'UTF-8'
 
     if ' '.join(options.command) == ' ' and options.nooutput is True:
         logging.error("-nooutput switch and interactive shell not supported")
@@ -397,8 +405,12 @@ if __name__ == '__main__':
         executer = WMIEXEC(' '.join(options.command), username, password, domain, options.hashes, options.aesKey,
                            options.share, options.nooutput, options.k, options.dc_ip)
         executer.run(address)
-    except (Exception, KeyboardInterrupt), e:
+    except KeyboardInterrupt, e:
         #import traceback
         #print traceback.print_exc()
         logging.error(str(e))
+    except Exception, e:
+        logging.error(str(e))
+        sys.exit(1)
+        
     sys.exit(0)

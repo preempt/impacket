@@ -46,6 +46,7 @@ from binascii import a2b_hex
 import datetime
 from struct import pack, unpack
 from contextlib import contextmanager
+from pyasn1.type.univ import noValue
 
 from impacket import nmb, ntlm, nt_errors, LOG
 from impacket.structure import Structure
@@ -487,7 +488,7 @@ class SessionError(Exception):
 
 
 
-    def __init__( self, error_string, error_class, error_code, nt_status = 0):
+    def __init__( self, error_string, error_class, error_code, nt_status = 0, packet=0):
         Exception.__init__(self, error_string)
         self.nt_status = nt_status
         self._args = error_string
@@ -497,13 +498,16 @@ class SessionError(Exception):
         else:
            self.error_class = error_class
            self.error_code = error_code
-
+        self.packet = packet
 
     def get_error_class( self ):
         return self.error_class
 
     def get_error_code( self ):
         return self.error_code
+
+    def get_error_packet(self):
+        return self.packet
 
     def __str__( self ):
         error_class = SessionError.error_classes.get( self.error_class, None )
@@ -710,7 +714,7 @@ class NewSMBPacket(Structure):
                 return 1
             elif self.isMoreProcessingRequired():
                 return 1
-            raise SessionError, ("SMB Library Error", self['ErrorClass'] + (self['_reserved'] << 8), self['ErrorCode'], self['Flags2'] & SMB.FLAGS2_NT_STATUS)
+            raise SessionError, ("SMB Library Error", self['ErrorClass'] + (self['_reserved'] << 8), self['ErrorCode'], self['Flags2'] & SMB.FLAGS2_NT_STATUS, self)
         else:
             raise UnsupportedFeature, ("Unexpected answer from server: Got %d, Expected %d" % (self['Command'], cmd))
 
@@ -1410,9 +1414,16 @@ class SMBSessionSetupAndX_Extended_Response_Data(AsciiOrUnicodeStructure):
     UnicodeStructure = (
         ('SecurityBlobLength','_-SecurityBlob','self["SecurityBlobLength"]'),
         ('SecurityBlob',':'),
+        ('PadLen','_-Pad','1 if (len(self["SecurityBlob"]) % 2 == 0) else 0'),
+        ('Pad',':=""'),
         ('NativeOS','u=""'),
         ('NativeLanMan','u=""'),
     )
+    def getData(self):
+        if self.structure == self.UnicodeStructure:
+            if len(str(self['SecurityBlob'])) % 2 == 0:
+                self['Pad'] = '\x00'
+        return AsciiOrUnicodeStructure.getData(self)
 
 ############# SMB_COM_TREE_CONNECT (0x70)
 class SMBTreeConnect_Parameters(SMBCommand_Parameters):
@@ -2113,7 +2124,7 @@ class SMBOpen_Data(AsciiOrUnicodeStructure):
     )
     UnicodeStructure = (
         ('FileNameFormat','"\x04'),
-        ('FileName','z'),
+        ('FileName','u'),
     )
 
 class SMBOpenResponse_Parameters(SMBCommand_Parameters):
@@ -2796,9 +2807,6 @@ class SMB:
         openFile['Data']       = SMBOpen_Data(flags=self.__flags2)
         openFile['Data']['FileName'] = filename
 
-        if self.__flags2 & SMB.FLAGS2_UNICODE:
-            openFile['Data']['Pad'] = 0x0
-
         smb.addCommand(openFile)
 
         self.sendSMB(smb)
@@ -3138,7 +3146,7 @@ class SMB:
         # (Section 5.5.1)
         encryptedEncodedAuthenticator = cipher.encrypt(sessionKey, 11, encodedAuthenticator, None)
 
-        apReq['authenticator'] = None
+        apReq['authenticator'] = noValue
         apReq['authenticator']['etype'] = cipher.enctype
         apReq['authenticator']['cipher'] = encryptedEncodedAuthenticator
 
@@ -4129,6 +4137,23 @@ class SMB:
             nt_trans_parameters = SMBNTTransactionResponse_Parameters(nt_trans_response['Parameters'])
             # Remove Potential Prefix Padding
             return nt_trans_response['Data'][-nt_trans_parameters['TotalDataCount']:]
+
+    def echo(self, text = '', count = 1):
+
+        smb = NewSMBPacket()
+        comEcho = SMBCommand(SMB.SMB_COM_ECHO)
+        comEcho['Parameters'] = SMBEcho_Parameters()
+        comEcho['Data']       = SMBEcho_Data()
+        comEcho['Parameters']['EchoCount'] = count
+        comEcho['Data']['Data'] = text
+        smb.addCommand(comEcho)
+
+        self.sendSMB(smb)
+
+        for i in range(count):
+            resp = self.recvSMB()
+            resp.isValidAnswer(SMB.SMB_COM_ECHO)
+        return True
 
 ERRDOS = { 1: 'Invalid function',
            2: 'File not found',

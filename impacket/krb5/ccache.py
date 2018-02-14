@@ -357,10 +357,14 @@ class CCache:
                 # the first one
                 if c['server'].prettyPrint().find('/') >=0:
                     # Let's take the port out for comparison
-                    cachedSPN = '%s@%s'  % (c['server'].prettyPrint().upper().split('/')[1].split('@')[0].split(':')[0],
+                    try:
+                        cachedSPN = '%s@%s'  % (c['server'].prettyPrint().upper().split('/')[1].split('@')[0].split(':')[0],
                                                c['server'].prettyPrint().upper().split('/')[1].split('@')[1])
-                    searchSPN = '%s@%s' % (server.upper().split('/')[1].split('@')[0].split(':')[0],
+                        searchSPN = '%s@%s' % (server.upper().split('/')[1].split('@')[0].split(':')[0],
                                                server.upper().split('/')[1].split('@')[1])
+                    except:
+                        #all the splits above do not handle some wierd format that our kinit version creates
+                        continue
                     if cachedSPN == searchSPN:
                         LOG.debug('Returning cached credential for %s' % c['server'].prettyPrint().upper())
                         return c

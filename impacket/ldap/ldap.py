@@ -556,6 +556,8 @@ class LDAPConnection:
 
     @staticmethod
     def _compileSimpleFilter(attribute, operator, value):
+        if value.startswith("\\"):
+            value = unhexlify("".join([y if len(y) == 2 else "0" + y for y in value.split("\\") if y]))
         searchFilter = Filter()
         if operator == ':=':  # extensibleMatch
             match = RE_EX_ATTRIBUTE_1.match(attribute) or RE_EX_ATTRIBUTE_2.match(attribute)

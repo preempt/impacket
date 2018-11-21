@@ -34,10 +34,10 @@ TEST_CASE = False # Only set to True when running Test Cases
 
 
 def computeResponse(flags, serverChallenge, clientChallenge, serverName, domain, user, password, lmhash='', nthash='',
-                    use_ntlmv2=USE_NTLMv2):
+                    use_ntlmv2=USE_NTLMv2, av_pairs=None):
     if use_ntlmv2:
         return computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, domain, user, password,
-                                     lmhash, nthash, use_ntlmv2=use_ntlmv2)
+                                     lmhash, nthash, use_ntlmv2=use_ntlmv2, av_pairs=av_pairs)
     else:
         return computeResponseNTLMv1(flags, serverChallenge, clientChallenge, serverName, domain, user, password,
                                      lmhash, nthash, use_ntlmv2=use_ntlmv2)
@@ -894,28 +894,30 @@ def LMOWFv2( user, password, domain, lmhash = ''):
 
 
 def computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, domain, user, password, lmhash='',
-                          nthash='', use_ntlmv2=USE_NTLMv2):
+                          nthash='', use_ntlmv2=USE_NTLMv2, av_pairs=None):
 
     responseServerVersion = b'\x01'
     hiResponseServerVersion = b'\x01'
     responseKeyNT = NTOWFv2(user, password, domain, nthash)
+	responseKeyLM = LMOWFv2(user, password, domain, lmhash)
 
-    av_pairs = AV_PAIRS(serverName)
-    # In order to support SPN target name validation, we have to add this to the serverName av_pairs. Otherwise we will
-    # get access denied
-    # This is set at Local Security Policy -> Local Policies -> Security Options -> Server SPN target name validation
-    # level
-    if TEST_CASE is False:
+    if not av_pairs:
+        av_pairs = AV_PAIRS(serverName)
+        # In order to support SPN target name validation, we have to add this to the serverName av_pairs. Otherwise we will
+        # get access denied
+        # This is set at Local Security Policy -> Local Policies -> Security Options -> Server SPN target name validation
+        # level
         av_pairs[NTLMSSP_AV_TARGET_NAME] = 'cifs/'.encode('utf-16le') + av_pairs[NTLMSSP_AV_HOSTNAME][1]
         if av_pairs[NTLMSSP_AV_TIME] is not None:
            aTime = av_pairs[NTLMSSP_AV_TIME][1]
         else:
            aTime = struct.pack('<q', (116444736000000000 + calendar.timegm(time.gmtime()) * 10000000) )
+           #aTime = '\x00'*8
            av_pairs[NTLMSSP_AV_TIME] = aTime
         serverName = av_pairs.getData()
     else:
-        aTime = b'\x00'*8
-
+        aTime = av_pairs[NTLMSSP_AV_TIME][1]
+        serverName = av_pairs[NTLMSSP_AV_HOSTNAME][1]
     temp = responseServerVersion + hiResponseServerVersion + b'\x00' * 6 + aTime + clientChallenge + b'\x00' * 4 + \
            serverName + b'\x00' * 4
 

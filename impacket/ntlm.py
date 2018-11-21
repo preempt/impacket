@@ -30,10 +30,10 @@ USE_NTLMv2 = True # if false will fall back to NTLMv1 (or NTLMv1 with ESS a.k.a 
 
 
 def computeResponse(flags, serverChallenge, clientChallenge, serverName, domain, user, password, lmhash='', nthash='',
-                    use_ntlmv2=USE_NTLMv2):
+                    use_ntlmv2=USE_NTLMv2, av_pairs=None):
     if use_ntlmv2:
         return computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, domain, user, password,
-                                     lmhash, nthash, use_ntlmv2=use_ntlmv2)
+                                     lmhash, nthash, use_ntlmv2=use_ntlmv2, av_pairs=av_pairs)
     else:
         return computeResponseNTLMv1(flags, serverChallenge, clientChallenge, serverName, domain, user, password,
                                      lmhash, nthash, use_ntlmv2=use_ntlmv2)
@@ -915,7 +915,7 @@ def LMOWFv2( user, password, domain, lmhash = ''):
 
 
 def computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, domain, user, password, lmhash='',
-                          nthash='', use_ntlmv2=USE_NTLMv2):
+                          nthash='', use_ntlmv2=USE_NTLMv2, av_pairs=None):
 
     responseServerVersion = '\x01'
     hiResponseServerVersion = '\x01'
@@ -925,19 +925,23 @@ def computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, d
     # If you're running test-ntlm, comment the following lines and uncoment the ones that are commented. Don't forget
     # to turn it back after the tests!
     ######################
-    av_pairs = AV_PAIRS(serverName)
-    # In order to support SPN target name validation, we have to add this to the serverName av_pairs. Otherwise we will
-    # get access denied
-    # This is set at Local Security Policy -> Local Policies -> Security Options -> Server SPN target name validation
-    # level
-    av_pairs[NTLMSSP_AV_TARGET_NAME] = 'cifs/'.encode('utf-16le') + av_pairs[NTLMSSP_AV_HOSTNAME][1]
-    if av_pairs[NTLMSSP_AV_TIME] is not None:
-       aTime = av_pairs[NTLMSSP_AV_TIME][1]
+    if not av_pairs:
+        av_pairs = AV_PAIRS(serverName)
+        # In order to support SPN target name validation, we have to add this to the serverName av_pairs. Otherwise we will
+        # get access denied
+        # This is set at Local Security Policy -> Local Policies -> Security Options -> Server SPN target name validation
+        # level
+        av_pairs[NTLMSSP_AV_TARGET_NAME] = 'cifs/'.encode('utf-16le') + av_pairs[NTLMSSP_AV_HOSTNAME][1]
+        if av_pairs[NTLMSSP_AV_TIME] is not None:
+           aTime = av_pairs[NTLMSSP_AV_TIME][1]
+        else:
+           aTime = struct.pack('<q', (116444736000000000 + calendar.timegm(time.gmtime()) * 10000000) )
+           #aTime = '\x00'*8
+           av_pairs[NTLMSSP_AV_TIME] = aTime
+        serverName = av_pairs.getData()
     else:
-       aTime = struct.pack('<q', (116444736000000000 + calendar.timegm(time.gmtime()) * 10000000) )
-       #aTime = '\x00'*8
-       av_pairs[NTLMSSP_AV_TIME] = aTime
-    serverName = av_pairs.getData()
+        aTime = av_pairs[NTLMSSP_AV_TIME][1]
+        serverName = av_pairs[NTLMSSP_AV_HOSTNAME][1]
           
     ######################
     #aTime = '\x00'*8

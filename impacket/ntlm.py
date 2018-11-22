@@ -938,11 +938,10 @@ def computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, d
            aTime = struct.pack('<q', (116444736000000000 + calendar.timegm(time.gmtime()) * 10000000) )
            #aTime = '\x00'*8
            av_pairs[NTLMSSP_AV_TIME] = aTime
-        serverName = av_pairs.getData()
     else:
         aTime = av_pairs[NTLMSSP_AV_TIME][1]
-        serverName = av_pairs[NTLMSSP_AV_HOSTNAME][1]
-          
+    serverName = av_pairs.getData()
+
     ######################
     #aTime = '\x00'*8
     ######################

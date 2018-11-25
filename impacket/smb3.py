@@ -119,7 +119,7 @@ class SessionError(Exception):
 
 class SMB3:
     def __init__(self, remote_name, remote_host, my_name=None, host_type=nmb.TYPE_SERVER, sess_port=445, timeout=60,
-                 UDP=0, preferredDialect=None, session=None, negSessionResponse=None):
+                 UDP=0, preferredDialect=None, session=None, negSessionResponse=None, srcIp=None):
 
         # [MS-SMB2] Section 3
         self.RequireMessageSigning = False    #
@@ -200,6 +200,7 @@ class SMB3:
         self._NetBIOSSession = None
         self._preferredDialect = preferredDialect
         self._doKerberos = False
+        self._srcIp= srcIp
 
         self.__userName = ''
         self.__password = ''
@@ -231,9 +232,9 @@ class SMB3:
                     my_name = my_name[:i]
 
             if UDP:
-                self._NetBIOSSession = nmb.NetBIOSUDPSession(my_name, self._Connection['ServerName'], remote_host, host_type, sess_port, self._timeout)
+                self._NetBIOSSession = nmb.NetBIOSUDPSession(my_name, self._Connection['ServerName'], remote_host, host_type, sess_port, self._timeout, srcIp=self._srcIp)
             else:
-                self._NetBIOSSession = nmb.NetBIOSTCPSession(my_name, self._Connection['ServerName'], remote_host, host_type, sess_port, self._timeout)
+                self._NetBIOSSession = nmb.NetBIOSTCPSession(my_name, self._Connection['ServerName'], remote_host, host_type, sess_port, self._timeout, srcIp=self._srcIp)
 
                 self.negotiateSession(preferredDialect)
         else:

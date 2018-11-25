@@ -42,7 +42,7 @@ class SMBConnection:
     """
 
     def __init__(self, remoteName='', remoteHost='', myName=None, sess_port=nmb.SMB_SESSION_PORT, timeout=60, preferredDialect=None,
-                 existingConnection=None, manualNegotiate=False):
+                 existingConnection=None, manualNegotiate=False, srcIp=None):
 
         self._SMBConnection = 0
         self._dialect       = ''
@@ -59,6 +59,7 @@ class SMBConnection:
         self._kdcHost = None
         self._useCache = True
         self._ntlmFallback = True
+        self._srcIp=srcIp
 
         if existingConnection is not None:
             # Existing Connection must be a smb or smb3 instance
@@ -96,7 +97,7 @@ class SMBConnection:
             self._remoteName = self._remoteHost
         elif self._sess_port == nmb.NETBIOS_SESSION_PORT and self._remoteName == '*SMBSERVER':
             # If remote name is *SMBSERVER let's try to query its name.. if can't be guessed, continue and hope for the best
-            nb = nmb.NetBIOS()
+            nb = nmb.NetBIOS(srcIp=self._srcIp)
             try:
                 res = nb.getnetbiosname(self._remoteHost)
             except:
@@ -113,19 +114,19 @@ class SMBConnection:
                 # Answer is SMB2 packet
                 self._SMBConnection = smb3.SMB3(self._remoteName, self._remoteHost, self._myName, hostType,
                                                 self._sess_port, self._timeout, session=self._nmbSession,
-                                                negSessionResponse=SMB2Packet(packet))
+                                                negSessionResponse=SMB2Packet(packet), srcIp=self._srcIp)
             else:
                 # Answer is SMB packet, sticking to SMBv1
                 self._SMBConnection = smb.SMB(self._remoteName, self._remoteHost, self._myName, hostType,
                                               self._sess_port, self._timeout, session=self._nmbSession,
-                                              negPacket=packet)
+                                              negPacket=packet, srcIp=self._srcIp)
         else:
             if preferredDialect == smb.SMB_DIALECT:
                 self._SMBConnection = smb.SMB(self._remoteName, self._remoteHost, self._myName, hostType,
-                                              self._sess_port, self._timeout)
+                                              self._sess_port, self._timeout, srcIp=self._srcIp)
             elif preferredDialect in [SMB2_DIALECT_002, SMB2_DIALECT_21, SMB2_DIALECT_30]:
                 self._SMBConnection = smb3.SMB3(self._remoteName, self._remoteHost, self._myName, hostType,
-                                                self._sess_port, self._timeout, preferredDialect=preferredDialect)
+                                                self._sess_port, self._timeout, preferredDialect=preferredDialect, srcIp=self._srcIp)
             else:
                 LOG.critical("Unknown dialect %s", preferredDialect)
                 raise
@@ -156,7 +157,7 @@ class SMBConnection:
         resp = None
         while tries < 2:
             self._nmbSession = nmb.NetBIOSTCPSession(myName, remoteName, remoteHost, nmb.TYPE_SERVER, sess_port,
-                                                     timeout)
+                                                     timeout, srcIp=self._srcIp)
 
             negSession = smb.SMBCommand(smb.SMB.SMB_COM_NEGOTIATE)
             if extended_security is True:

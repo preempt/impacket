@@ -470,10 +470,11 @@ class STATISTICS(Structure):
 class NetBIOS:
     # Creates a NetBIOS instance without specifying any default NetBIOS domain nameserver.
     # All queries will be sent through the servport.
-    def __init__(self, servport = NETBIOS_NS_PORT):
+    def __init__(self, servport = NETBIOS_NS_PORT, srcIp=None):
         self.__servport = NETBIOS_NS_PORT
         self.__nameserver = None
         self.__broadcastaddr = BROADCAST_ADDR
+        self.__srcIp = srcIp if srcIp else INADDR_ANY
         self.mac = '00-00-00-00-00-00'
 
     def _setup_connection(self, dstaddr, timeout=None):
@@ -484,7 +485,7 @@ class NetBIOS:
         for _i in range(0, 10):
             # We try to bind to a port for 10 tries
             try:
-                s.bind((INADDR_ANY, randint(10000, 60000)))
+                s.bind((self.__srcIp, randint(10000, 60000)))
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 has_bind = 1
             except socket.error:
@@ -666,7 +667,7 @@ class NetBIOSSessionPacket:
         
 class NetBIOSSession:
     def __init__(self, myname, remote_name, remote_host, remote_type=TYPE_SERVER, sess_port=NETBIOS_SESSION_PORT,
-                 timeout=None, local_type=TYPE_WORKSTATION, sock=None):
+                 timeout=None, local_type=TYPE_WORKSTATION, sock=None, srcIp=None):
         if len(myname) > 15:
             self.__myname = string.upper(myname[:15])
         else:
@@ -697,7 +698,7 @@ class NetBIOSSession:
             self.__remote_name = string.upper(remote_name)
         self.__remote_type = remote_type
         self.__remote_host = remote_host
-
+        self.__srcIp = srcIp
         if sock is not None:
             # We are acting as a server
             self._sock = sock
@@ -770,6 +771,8 @@ class NetBIOSUDPSession(NetBIOSSession):
     def _setup_connection(self, peer, timeout=None):
         af, socktype, proto, canonname, sa = socket.getaddrinfo(peer[0], peer[1], 0, socket.SOCK_DGRAM)[0]
         sock = socket.socket(af, socktype, proto)
+        if self._NetBIOSSession__srcIp:
+            sock.bind((self._NetBIOSSession__srcIp, 0))
         sock.connect(sa)
 
         sock = socket.socket(af, socktype, proto)
@@ -823,14 +826,14 @@ class NetBIOSUDPSession(NetBIOSSession):
 
 class NetBIOSTCPSession(NetBIOSSession):
     def __init__(self, myname, remote_name, remote_host, remote_type=TYPE_SERVER, sess_port=NETBIOS_SESSION_PORT,
-                 timeout=None, local_type=TYPE_WORKSTATION, sock=None, select_poll=False):
+                 timeout=None, local_type=TYPE_WORKSTATION, sock=None, select_poll=False, srcIp=None):
         self.__select_poll = select_poll
         if self.__select_poll:
             self.read_function = self.polling_read
         else:
             self.read_function = self.non_polling_read
         NetBIOSSession.__init__(self, myname, remote_name, remote_host, remote_type=remote_type, sess_port=sess_port,
-                                timeout=timeout, local_type=local_type, sock=sock)
+                                timeout=timeout, local_type=local_type, sock=sock, srcIp=srcIp)
 
     def _setup_connection(self, peer, timeout=None):
         try:
@@ -838,6 +841,8 @@ class NetBIOSTCPSession(NetBIOSSession):
             sock = socket.socket(af, socktype, proto)
             oldtimeout = sock.gettimeout()
             sock.settimeout(timeout)
+            if self._NetBIOSSession__srcIp:
+                sock.bind((self._NetBIOSSession__srcIp, 0))
             sock.connect(sa)
             sock.settimeout(oldtimeout)
         except socket.error, e:

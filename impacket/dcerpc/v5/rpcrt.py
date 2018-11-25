@@ -796,8 +796,8 @@ class DCERPC:
     def set_ctx_id(self, ctx_id):
         self._ctx = ctx_id
 
-    def connect(self):
-        return self._transport.connect()
+    def connect(self, srcIp=None):
+        return self._transport.connect(srcIp=srcIp)
 
     def disconnect(self):
         return self._transport.disconnect()

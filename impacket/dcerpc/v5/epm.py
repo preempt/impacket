@@ -1228,13 +1228,13 @@ def hept_lookup(destHost, inquiry_type = RPC_C_EP_ALL_ELTS, objectUUID = NULL, i
 
     return entries
 
-def hept_map(destHost, remoteIf, dataRepresentation = uuidtup_to_bin(('8a885d04-1ceb-11c9-9fe8-08002b104860', '2.0')), protocol = 'ncacn_np', dce=None):
+def hept_map(destHost, remoteIf, dataRepresentation = uuidtup_to_bin(('8a885d04-1ceb-11c9-9fe8-08002b104860', '2.0')), protocol = 'ncacn_np', dce=None, srcIp=None):
 
     if dce is None:
         stringBinding = r'ncacn_ip_tcp:%s[135]' % destHost
         rpctransport = transport.DCERPCTransportFactory(stringBinding)
         dce = rpctransport.get_dce_rpc()
-        dce.connect()
+        dce.connect(srcIp=srcIp)
         disconnect = True
     else:
         disconnect = False

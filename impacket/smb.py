@@ -2340,7 +2340,7 @@ class SMB:
     SMB_SHARE_IS_IN_DFS                     = 0x02
 
     def __init__(self, remote_name, remote_host, my_name=None, host_type=nmb.TYPE_SERVER, sess_port=445, timeout=None,
-                 UDP=0, session=None, negPacket=None):
+                 UDP=0, session=None, negPacket=None, srcIp=None):
         # The uid attribute will be set when the client calls the login() method
         self._uid = 0
         self.__server_name = ''
@@ -2410,6 +2410,8 @@ class SMB:
         else:
             self.__client_name = my_name
 
+        self._srcIp = srcIp
+
         if session is None:
             if not my_name:
                 # If destination port is 139 yes, there's some client disclosure
@@ -2419,9 +2421,9 @@ class SMB:
                     my_name = my_name[:i]
 
             if UDP:
-                self._sess = nmb.NetBIOSUDPSession(my_name, remote_name, remote_host, host_type, sess_port, self.__timeout)
+                self._sess = nmb.NetBIOSUDPSession(my_name, remote_name, remote_host, host_type, sess_port, self.__timeout, srcIp=srcIp)
             else:
-                self._sess = nmb.NetBIOSTCPSession(my_name, remote_name, remote_host, host_type, sess_port, self.__timeout)
+                self._sess = nmb.NetBIOSTCPSession(my_name, remote_name, remote_host, host_type, sess_port, self.__timeout, srcIp=srcIp)
 
                 # Initialize session values (_dialect_data and _dialect_parameters)
                 self.neg_session()

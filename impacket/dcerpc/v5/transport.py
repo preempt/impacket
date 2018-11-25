@@ -141,7 +141,7 @@ class DCERPCTransport:
         self._kdcHost  = None
         self.set_credentials('','')
 
-    def connect(self):
+    def connect(self, srcIp=None):
         raise RuntimeError('virtual function')
     def send(self,data=0, forceWriteAndx = 0, forceRecv = 0):
         raise RuntimeError('virtual function')
@@ -257,11 +257,13 @@ class UDPTransport(DCERPCTransport):
         self.set_connect_timeout(30)
         self.__recv_addr = ''
 
-    def connect(self):
+    def connect(self, srcIp=None):
         try:
             af, socktype, proto, canonname, sa = socket.getaddrinfo(self.getRemoteHost(), self.get_dport(), 0, socket.SOCK_DGRAM)[0]
             self.__socket = socket.socket(af, socktype, proto)
             self.__socket.settimeout(self.get_connect_timeout())
+            if srcIp:
+                self.__socket.bind((srcIp, 0))
         except socket.error as msg:
             self.__socket = None
             raise DCERPCException("Could not connect: %s" % msg)
@@ -297,11 +299,13 @@ class TCPTransport(DCERPCTransport):
         self.__socket = 0
         self.set_connect_timeout(30)
 
-    def connect(self):
+    def connect(self, srcIp=None):
         af, socktype, proto, canonname, sa = socket.getaddrinfo(self.getRemoteHost(), self.get_dport(), 0, socket.SOCK_STREAM)[0]
         self.__socket = socket.socket(af, socktype, proto)
         try:
             self.__socket.settimeout(self.get_connect_timeout())
+            if srcIp:
+                self.__socket.bind((srcIp, 0))
             self.__socket.connect(sa)
         except socket.error as msg:
             self.__socket.close()
@@ -343,8 +347,8 @@ class TCPTransport(DCERPCTransport):
 class HTTPTransport(TCPTransport):
     """Implementation of ncacn_http protocol sequence"""
 
-    def connect(self):
-        TCPTransport.connect(self)
+    def connect(self, srcIp=None):
+        TCPTransport.connect(self, srcIp=srcIp)
 
         self.get_socket().send('RPC_CONNECT ' + self.getRemoteHost() + ':593 HTTP/1.0\r\n\r\n')
         data = self.get_socket().recv(8192)
@@ -381,15 +385,15 @@ class SMBTransport(DCERPCTransport):
     def preferred_dialect(self, dialect):
         self.__prefDialect = dialect
 
-    def setup_smb_connection(self):
+    def setup_smb_connection(self, srcIp=None):
         if not self.__smb_connection:
             self.__smb_connection = SMBConnection(self.getRemoteName(), self.getRemoteHost(), sess_port=self.get_dport(),
-                                                  preferredDialect=self.__prefDialect)
+                                                  preferredDialect=self.__prefDialect, srcIp=srcIp)
 
-    def connect(self):
+    def connect(self, srcIp=None):
         # Check if we have a smb connection already setup
         if self.__smb_connection == 0:
-            self.setup_smb_connection()
+            self.setup_smb_connection(srcIp=srcIp)
             if self._doKerberos is False:
                 self.__smb_connection.login(self._username, self._password, self._domain, self._lmhash, self._nthash)
             else:
@@ -463,7 +467,7 @@ class LOCALTransport(DCERPCTransport):
         self.__filename = filename
         self.__handle = 0
 
-    def connect(self):
+    def connect(self, srcIp=None):
         if self.__filename.upper().find('PIPE') < 0:
             self.__filename = '\\PIPE\\%s' % self.__filename
         self.__handle = os.open('\\\\.\\%s' % self.__filename, os.O_RDWR|os.O_BINARY)

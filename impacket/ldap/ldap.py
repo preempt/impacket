@@ -64,13 +64,14 @@ RE_EX_ATTRIBUTE_2 = re.compile(r'^(){0}%s?%s$' % (DN, MATCHING_RULE), re.I)
 
 
 class LDAPConnection:
-    def __init__(self, url, baseDN='', dstIp=None):
+    def __init__(self, url, baseDN='', dstIp=None, srcIp=None):
         """
         LDAPConnection class
 
         :param string url:
         :param string baseDN:
         :param string dstIp:
+        :param string srcIp:
 
         :return: a LDAP instance, if not raises a LDAPSessionError exception
         """
@@ -111,12 +112,16 @@ class LDAPConnection:
             raise socket.error('Connection error (%s:%d)' % (targetHost, 88), e)
 
         if self._SSL is False:
+            if srcIp:
+                self._socket.bind((srcIp, 0))
             self._socket.connect(sa)
         else:
             # Switching to TLS now
             ctx = SSL.Context(SSL.TLSv1_METHOD)
             # ctx.set_cipher_list('RC4')
             self._socket = SSL.Connection(ctx, self._socket)
+            if srcIp:
+                self._socket.bind((srcIp, 0))
             self._socket.connect(sa)
             self._socket.do_handshake()
 

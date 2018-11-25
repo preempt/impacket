@@ -45,7 +45,7 @@ except NotImplementedError:
     rand = random
     pass
 
-def sendReceive(data, host, kdcHost):
+def sendReceive(data, host, kdcHost, srcIp=None):
     if kdcHost is None:
         targetHost = host
     else:
@@ -57,6 +57,8 @@ def sendReceive(data, host, kdcHost):
     try:
         af, socktype, proto, canonname, sa = socket.getaddrinfo(targetHost, 88, 0, socket.SOCK_STREAM)[0]
         s = socket.socket(af, socktype, proto)
+        if srcIp:
+            s.bind((srcIp, 0))
         s.connect(sa)
     except socket.error as e:
         raise socket.error("Connection error (%s:%s)" % (targetHost, 88), e)

@@ -561,8 +561,11 @@ class LDAPConnection:
 
     @staticmethod
     def _compileSimpleFilter(attribute, operator, value):
+        from_binary = False
         if value.startswith("\\"):
             value = unhexlify("".join([y if len(y) == 2 else "0" + y for y in value.split("\\") if y]))
+            from_binary = True
+
         searchFilter = Filter()
         if operator == ':=':  # extensibleMatch
             match = RE_EX_ATTRIBUTE_1.match(attribute) or RE_EX_ATTRIBUTE_2.match(attribute)
@@ -579,9 +582,9 @@ class LDAPConnection:
         else:
             if not RE_ATTRIBUTE.match(attribute):
                 raise LDAPFilterInvalidException("invalid filter attribute: '%s'" % attribute)
-            if value == '*' and operator == '=':  # present
+            if value == '*' and operator == '=' and not from_binary:  # present
                 searchFilter['present'] = attribute
-            elif '*' in value and operator == '=':  # substring
+            elif '*' in value and operator == '=' and not from_binary:  # substring
                 assertions = value.split('*')
                 choice = searchFilter['substrings']['substrings'].getComponentType()
                 substrings = []
@@ -593,7 +596,7 @@ class LDAPConnection:
                     substrings.append(choice.clone().setComponentByName('final', assertions[-1]))
                 searchFilter['substrings']['type'] = attribute
                 searchFilter['substrings']['substrings'].setComponents(*substrings)
-            elif '*' not in value:  # simple
+            elif '*' not in value or from_binary:  # simple
                 if operator == '=':
                     searchFilter['equalityMatch'].setComponents(attribute, value)
                 elif operator == '~=':

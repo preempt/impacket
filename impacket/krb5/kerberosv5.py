@@ -281,7 +281,7 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
         seq_set_iter(reqBody, 'etype', ( (int(cipher.enctype),)))
 
         try:
-        tgt = sendReceive(encoder.encode(asReq), domain, kdcHost) 
+            tgt = sendReceive(encoder.encode(asReq), domain, kdcHost)
         except Exception as e:
             if str(e).find('KDC_ERR_ETYPE_NOSUPP') >= 0:
                 if lmhash is '' and nthash is '' and (aesKey is '' or aesKey is None):

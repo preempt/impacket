@@ -899,7 +899,7 @@ def computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, d
     responseServerVersion = b'\x01'
     hiResponseServerVersion = b'\x01'
     responseKeyNT = NTOWFv2(user, password, domain, nthash)
-	responseKeyLM = LMOWFv2(user, password, domain, lmhash)
+    responseKeyLM = LMOWFv2(user, password, domain, lmhash)
 
     if not av_pairs:
         av_pairs = AV_PAIRS(serverName)

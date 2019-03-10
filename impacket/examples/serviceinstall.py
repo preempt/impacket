@@ -224,7 +224,8 @@ class ServiceInstall:
             LOG.info('Removing file %s.....' % self.__binary_service_name)
             self.connection.deleteFile(self.share, self.__binary_service_name)
         except Exception:
-            LOG.critical("Error performing the uninstallation, cleaning up" )
+            #preempt execution service self destructs, no need for uninstall, this is a safeguard only
+            #LOG.critical("Error performing the uninstallation, cleaning up" )
             try:
                 scmr.hRControlService(self.rpcsvc, service, scmr.SERVICE_CONTROL_STOP)
             except:

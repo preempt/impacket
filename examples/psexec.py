@@ -55,7 +55,7 @@ lock = Lock()
 
 class PSEXEC:
     def __init__(self, command, path, exeFile, copyFile, port=445,
-                 username='', password='', domain='', hashes=None, aesKey=None, doKerberos=False, kdcHost=None):
+                 username='', password='', domain='', hashes=None, aesKey=None, doKerberos=False, kdcHost=None, kdcHostTargetDomain=None):
         self.__username = username
         self.__password = password
         self.__port = port
@@ -69,6 +69,7 @@ class PSEXEC:
         self.__copyFile = copyFile
         self.__doKerberos = doKerberos
         self.__kdcHost = kdcHost
+        self.__kdcHostTargetDomain = kdcHostTargetDomain
         if hashes is not None:
             self.__lmhash, self.__nthash = hashes.split(':')
 
@@ -85,7 +86,7 @@ class PSEXEC:
             rpctransport.set_credentials(self.__username, self.__password, self.__domain, self.__lmhash,
                                          self.__nthash, self.__aesKey)
 
-        rpctransport.set_kerberos(self.__doKerberos, self.__kdcHost)
+        rpctransport.set_kerberos(self.__doKerberos, self.__kdcHost, kdcHostTargetDomain=self.__kdcHostTargetDomain)
         self.doStuff(rpctransport)
 
     def openPipe(self, s, tid, pipe, accessMask):
@@ -232,7 +233,7 @@ class Pipes(Thread):
                                         sess_port=self.port, preferredDialect=dialect)
             user, passwd, domain, lm, nt, aesKey, TGT, TGS = self.credentials
             if self.transport.get_kerberos() is True:
-                self.server.kerberosLogin(user, passwd, domain, lm, nt, aesKey, kdcHost=self.transport.get_kdcHost(), TGT=TGT, TGS=TGS)
+                self.server.kerberosLogin(user, passwd, domain, lm, nt, aesKey, kdcHost=self.transport.get_kdcHost(), TGT=TGT, TGS=TGS, kdcHostTargetDomain=self.transport.get_kdcHostTargetDomain())
             else:
                 self.server.login(user, passwd, domain, lm, nt)
             lock.release()
@@ -437,6 +438,9 @@ if __name__ == '__main__':
     group.add_argument('-dc-ip', action='store', metavar="ip address",
                        help='IP Address of the domain controller. If ommited it use the domain part (FQDN) specified in '
                             'the target parameter')
+    group.add_argument('-target-domain-dc-ip', action='store', metavar="ip address",
+                       help='IP Address of the domain controller in the targets domain. Use this if the target machine is not in the same domain as the user account.'
+                            'If omitted it will use dns to resolve a suitable dc')
     group.add_argument('-target-ip', action='store', metavar="ip address",
                        help='IP Address of the target machine. If ommited it will use whatever was specified as target. '
                             'This is useful when target is the NetBIOS name and you cannot resolve it')
@@ -482,5 +486,5 @@ if __name__ == '__main__':
         command = 'cmd.exe'
 
     executer = PSEXEC(command, options.path, options.file, options.c, int(options.port), username, password, domain, options.hashes,
-                      options.aesKey, options.k, options.dc_ip)
+                      options.aesKey, options.k, options.dc_ip, kdcHostTargetDomain=options.target_domain_dc_ip)
     executer.run(remoteName, options.target_ip)

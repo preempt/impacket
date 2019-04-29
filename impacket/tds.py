@@ -615,7 +615,7 @@ class MSSQL:
         #print packet['Length']
         return packet
 
-    def kerberosLogin(self, database, username, password='', domain='', hashes=None, aesKey='', kdcHost=None, TGT=None, TGS=None, useCache=True):
+    def kerberosLogin(self, database, username, password='', domain='', hashes=None, aesKey='', kdcHost=None, TGT=None, TGS=None, useCache=True, kdcHostTargetDomain=None):
 
         if hashes is not None:
             lmhash, nthash = hashes.split(':')
@@ -773,7 +773,7 @@ class MSSQL:
                 #         instancename is the name of the SQL Server instance.
                 serverName = Principal('MSSQLSvc/%s.%s:%d' % (self.server.split('.')[0], domain, self.port), type=constants.PrincipalNameType.NT_SRV_INST.value)
                 try:
-                    tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey)
+                    tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
                 except KerberosError, e:
                     if e.getErrorCode() == constants.ErrorCodes.KDC_ERR_ETYPE_NOSUPP.value:
                         # We might face this if the target does not support AES

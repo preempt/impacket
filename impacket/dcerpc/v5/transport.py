@@ -135,6 +135,7 @@ class DCERPCTransport:
         self._TGT      = None
         self._TGS      = None
         self._kdcHost  = None
+        self.__kdcHostTargetDomain = None
         self.set_credentials('','')
 
     def connect(self, srcIp=None):
@@ -180,15 +181,18 @@ class DCERPCTransport:
         self.setRemoteHost(addr[0])
         self.set_dport(addr[1])
 
-    def set_kerberos(self, flag, kdcHost = None):
+    def set_kerberos(self, flag, kdcHost = None, kdcHostTargetDomain=None):
         self._doKerberos = flag
         self._kdcHost = kdcHost
+        self._kdcHostTargetDomain = kdcHostTargetDomain
 
     def get_kerberos(self):
         return self._doKerberos
 
     def get_kdcHost(self):
         return self._kdcHost
+    def get_kdcHostTargetDomain(self):
+        return self._kdcHostTargetDomain
 
     def set_max_fragment_size(self, send_fragment_size):
         # -1 is default fragment size: 0 (don't fragment)
@@ -353,7 +357,7 @@ class SMBTransport(DCERPCTransport):
     """Implementation of ncacn_np protocol sequence"""
 
     def __init__(self, remoteName, dstport=445, filename='', username='', password='', domain='', lmhash='', nthash='',
-                 aesKey='', TGT=None, TGS=None, remote_host='', smb_connection=0, doKerberos=False, kdcHost=None):
+                 aesKey='', TGT=None, TGS=None, remote_host='', smb_connection=0, doKerberos=False, kdcHost=None, kdcHostTargetDomain=None):
         DCERPCTransport.__init__(self, remoteName, dstport)
         self.__socket = None
         self.__tid = 0
@@ -363,6 +367,7 @@ class SMBTransport(DCERPCTransport):
         self.set_credentials(username, password, domain, lmhash, nthash, aesKey, TGT, TGS)
         self._doKerberos = doKerberos
         self._kdcHost = kdcHost
+        self._kdcHostTargetDomain = kdcHostTargetDomain
 
         if remote_host != '':
             self.setRemoteHost(remote_host)
@@ -393,7 +398,7 @@ class SMBTransport(DCERPCTransport):
             else:
                 self.__smb_connection.kerberosLogin(self._username, self._password, self._domain, self._lmhash,
                                                     self._nthash, self._aesKey, kdcHost=self._kdcHost, TGT=self._TGT,
-                                                    TGS=self._TGS)
+                                                    TGS=self._TGS, kdcHostTargetDomain=self._kdcHostTargetDomain)
         self.__tid = self.__smb_connection.connectTree('IPC$')
         self.__handle = self.__smb_connection.openFile(self.__tid, self.__filename)
         self.__socket = self.__smb_connection.getSMBServer().get_socket()

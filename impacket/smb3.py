@@ -513,7 +513,7 @@ class SMB3:
             self.__TGT, 
             self.__TGS)
 
-    def kerberosLogin(self, user, password, domain = '', lmhash = '', nthash = '', aesKey='', kdcHost = '', TGT=None, TGS=None):
+    def kerberosLogin(self, user, password, domain = '', lmhash = '', nthash = '', aesKey='', kdcHost = '', TGT=None, TGS=None, kdcHostTargetDomain=None):
         # If TGT or TGS are specified, they are in the form of:
         # TGS['KDC_REP'] = the response from the server
         # TGS['cipher'] = the cipher used
@@ -584,7 +584,7 @@ class SMB3:
 
         if TGS is None:
             serverName = Principal('cifs/%s' % (self._Connection['ServerName']), type=constants.PrincipalNameType.NT_SRV_INST.value)
-            tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey)
+            tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
         else:
             tgs = TGS['KDC_REP']
             cipher = TGS['cipher']

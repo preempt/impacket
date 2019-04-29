@@ -3031,7 +3031,7 @@ class SMB:
         challenge = self._dialects_data['Challenge']
         return ntlm.get_ntlmv1_response(key, challenge)
 
-    def kerberos_login(self, user, password, domain = '', lmhash = '', nthash = '', aesKey = '', kdcHost = '', TGT=None, TGS=None):
+    def kerberos_login(self, user, password, domain = '', lmhash = '', nthash = '', aesKey = '', kdcHost = '', TGT=None, TGS=None, kdcHostTargetDomain=None):
         # Importing down here so pyasn1 is not required if kerberos is not used.
         from impacket.krb5.asn1 import AP_REQ, Authenticator, TGS_REP, seq_set
         from impacket.krb5.kerberosv5 import getKerberosTGT, getKerberosTGS
@@ -3085,7 +3085,7 @@ class SMB:
 
         if TGS is None:
             serverName = Principal('cifs/%s' % self.__remote_name, type=constants.PrincipalNameType.NT_SRV_INST.value)
-            tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey)
+            tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
         else:
             tgs = TGS['KDC_REP']
             cipher = TGS['cipher']

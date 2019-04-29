@@ -289,7 +289,7 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
 
     return tgt, cipher, key, sessionKey
 
-def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, srcIp=None):
+def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, srcIp=None, kdcHostTargetDomain=None):
 
     # Decode the TGT
     try:
@@ -403,7 +403,7 @@ def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, srcIp=N
     else:
         # Let's extract the Ticket, change the domain and keep asking
         domain = spn.components[1]
-        return getKerberosTGS(serverName, domain, kdcHost, r, cipher, newSessionKey)
+        return getKerberosTGS(serverName, domain, kdcHostTargetDomain, r, cipher, newSessionKey)
     
     return r, cipher, sessionKey, newSessionKey
 
@@ -458,7 +458,7 @@ def getKerberosType3(cipher, sessionKey, auth_data):
 
     return cipher, sessionKey2, resp.getData()
 
-def getKerberosType1(username, password, domain, lmhash, nthash, aesKey='', TGT = None, TGS = None, targetName='', kdcHost = None, useCache = True):
+def getKerberosType1(username, password, domain, lmhash, nthash, aesKey='', TGT = None, TGS = None, targetName='', kdcHost = None, useCache = True, kdcHostTargetDomain=None):
     if TGT is None and TGS is None:
         if useCache is True:
             try:
@@ -529,7 +529,7 @@ def getKerberosType1(username, password, domain, lmhash, nthash, aesKey='', TGT 
         if TGS is None:
             serverName = Principal('host/%s' % targetName, type=constants.PrincipalNameType.NT_SRV_INST.value)
             try:
-                tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey)
+                tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
             except KerberosError, e:
                 if e.getErrorCode() == constants.ErrorCodes.KDC_ERR_ETYPE_NOSUPP.value:
                     # We might face this if the target does not support AES 

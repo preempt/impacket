@@ -123,7 +123,7 @@ class LDAPConnection:
             self._socket.do_handshake()
 
     def kerberosLogin(self, user, password, domain='', lmhash='', nthash='', aesKey='', kdcHost=None, TGT=None,
-                      TGS=None, useCache=True):
+                      TGS=None, useCache=True, kdcHostTargetDomain=None):
         """
         logins into the target system explicitly using Kerberos. Hashes are used if RC4_HMAC is supported.
 
@@ -213,7 +213,7 @@ class LDAPConnection:
         if TGS is None:
             serverName = Principal('ldap/%s' % self._dstHost, type=constants.PrincipalNameType.NT_SRV_INST.value)
             tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, domain, kdcHost, tgt, cipher,
-                                                                    sessionKey)
+                                                                    sessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
         else:
             tgs = TGS['KDC_REP']
             cipher = TGS['cipher']

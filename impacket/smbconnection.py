@@ -57,6 +57,7 @@ class SMBConnection:
         self._manualNegotiate = manualNegotiate
         self._doKerberos = False
         self._kdcHost = None
+        self._kdcHostTargetDomain = None
         self._useCache = True
         self._ntlmFallback = True
         self._srcIp=srcIp
@@ -263,7 +264,7 @@ class SMBConnection:
             raise SessionError(e.get_error_code(), e.get_error_packet())
 
     def kerberosLogin(self, user, password, domain='', lmhash='', nthash='', aesKey='', kdcHost=None, TGT=None,
-                      TGS=None, useCache=True):
+                      TGS=None, useCache=True, kdcHostTargetDomain=None):
         """
         logins into the target system explicitly using Kerberos. Hashes are used if RC4_HMAC is supported.
 
@@ -287,6 +288,7 @@ class SMBConnection:
         from impacket.ntlm import compute_lmhash, compute_nthash
 
         self._kdcHost = kdcHost
+        self._kdcHostTargetDomain = kdcHostTargetDomain
         self._useCache = useCache
 
         if TGT is not None or TGS is not None:
@@ -332,10 +334,10 @@ class SMBConnection:
             try:
                 if self.getDialect() == smb.SMB_DIALECT:
                     return self._SMBConnection.kerberos_login(user, password, domain, lmhash, nthash, aesKey, kdcHost,
-                                                              TGT, TGS)
+                                                              TGT, TGS, kdcHostTargetDomain=self._kdcHostTargetDomain)
                 return self._SMBConnection.kerberosLogin(user, password, domain, lmhash, nthash, aesKey, kdcHost, TGT,
-                                                         TGS)
-            except (smb.SessionError, smb3.SessionError), e:
+                                                         TGS, kdcHostTargetDomain=self._kdcHostTargetDomain)
+            except (smb.SessionError, smb3.SessionError) as e:
                 raise SessionError(e.get_error_code(), e.get_error_packet())
             except KerberosError, e:
                 if e.getErrorCode() == constants.ErrorCodes.KDC_ERR_ETYPE_NOSUPP.value:

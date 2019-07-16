@@ -403,8 +403,13 @@ def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, srcIp=N
     else:
         # Let's extract the Ticket, change the domain and keep asking
         domain = spn.components[1]
-        return getKerberosTGS(serverName, domain, kdcHostTargetDomain, r, cipher, newSessionKey)
-    
+        LOG.info("Received referral to domain:%s" % domain)
+        try:
+            return getKerberosTGS(serverName, domain, kdcHostTargetDomain, r, cipher, newSessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
+        except Exception as e:
+            if "WRONG_REALM" in str(e):
+                LOG.info("Received wrong realm error, switching to DNS resolution mode")
+                return getKerberosTGS(serverName, domain, None, r, cipher, newSessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
     return r, cipher, sessionKey, newSessionKey
 
 ################################################################################

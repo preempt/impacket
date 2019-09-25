@@ -281,7 +281,7 @@ class LDAPConnection:
 
         return True
 
-    def login(self, user='', password='', domain='', lmhash='', nthash='', authenticationChoice='sicilyNegotiate'):
+    def login(self, user='', password='', domain='', lmhash='', nthash='', authenticationChoice='sicilyNegotiate', insert_channel_binding=False, server_cert='\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'):
         """
         logins into the target system
 
@@ -334,7 +334,7 @@ class LDAPConnection:
             type2 = response['bindResponse']['matchedDN']
 
             # NTLM Auth
-            type3, exportedSessionKey = getNTLMSSPType3(negotiate, str(type2), user, password, domain, lmhash, nthash)
+            type3, exportedSessionKey = getNTLMSSPType3(negotiate, str(type2), user, password, domain, lmhash, nthash, insert_channel_binding=insert_channel_binding, server_cert=server_cert)
             bindRequest['authentication']['sicilyResponse'] = type3
             response = self.sendReceive(bindRequest)[0]['protocolOp']
         else:

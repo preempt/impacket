@@ -30,10 +30,10 @@ USE_NTLMv2 = True # if false will fall back to NTLMv1 (or NTLMv1 with ESS a.k.a 
 
 
 def computeResponse(flags, serverChallenge, clientChallenge, serverName, domain, user, password, lmhash='', nthash='',
-                    use_ntlmv2=USE_NTLMv2, av_pairs=None):
+                    use_ntlmv2=USE_NTLMv2, av_pairs=None, insert_channel_binding=False, server_cert='\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'):
     if use_ntlmv2:
         return computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, domain, user, password,
-                                     lmhash, nthash, use_ntlmv2=use_ntlmv2, av_pairs=av_pairs)
+                                     lmhash, nthash, use_ntlmv2=use_ntlmv2, av_pairs=av_pairs, insert_channel_binding=insert_channel_binding, server_cert=server_cert)
     else:
         return computeResponseNTLMv1(flags, serverChallenge, clientChallenge, serverName, domain, user, password,
                                      lmhash, nthash, use_ntlmv2=use_ntlmv2)
@@ -594,7 +594,7 @@ def getNTLMSSPType1(workstation='', domain='', signingRequired = False, use_ntlm
 
     return auth
 
-def getNTLMSSPType3(type1, type2, user, password, domain, lmhash = '', nthash = '', use_ntlmv2 = USE_NTLMv2):
+def getNTLMSSPType3(type1, type2, user, password, domain, lmhash = '', nthash = '', use_ntlmv2 = USE_NTLMv2, insert_channel_binding=False, server_cert='\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'):
 
     # Safety check in case somebody sent password = None.. That's not allowed. Setting it to '' and hope for the best.
     if password is None:
@@ -633,7 +633,7 @@ def getNTLMSSPType3(type1, type2, user, password, domain, lmhash = '', nthash = 
 
     ntResponse, lmResponse, sessionBaseKey = computeResponse(ntlmChallenge['flags'], ntlmChallenge['challenge'],
                                                              clientChallenge, serverName, domain, user, password,
-                                                             lmhash, nthash, use_ntlmv2)
+                                                             lmhash, nthash, use_ntlmv2, insert_channel_binding=insert_channel_binding, server_cert=server_cert)
 
     # Let's check the return flags
     if (ntlmChallenge['flags'] & NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY) == 0:
@@ -915,7 +915,7 @@ def LMOWFv2( user, password, domain, lmhash = ''):
 
 
 def computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, domain, user, password, lmhash='',
-                          nthash='', use_ntlmv2=USE_NTLMv2, av_pairs=None):
+                          nthash='', use_ntlmv2=USE_NTLMv2, av_pairs=None, insert_channel_binding=False, server_cert='\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'):
 
     responseServerVersion = '\x01'
     hiResponseServerVersion = '\x01'
@@ -940,6 +940,8 @@ def computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, d
            av_pairs[NTLMSSP_AV_TIME] = aTime
     else:
         aTime = av_pairs[NTLMSSP_AV_TIME][1]
+    if insert_channel_binding:
+        av_pairs[NTLMSSP_AV_CHANNEL_BINDINGS] = server_cert
     serverName = av_pairs.getData()
 
     ######################

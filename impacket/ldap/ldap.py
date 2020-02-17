@@ -61,7 +61,8 @@ RE_EX_ATTRIBUTE_2 = re.compile(r'^(){0}%s?%s$' % (DN, MATCHING_RULE), re.I)
 
 
 class LDAPConnection:
-    def __init__(self, url, baseDN='', dstIp=None, srcIp=None):
+    def __init__(self, url, baseDN='', dstIp=None, srcIp=None, port=None, tls=None,
+                 certPath=None, verifyMode=None, callback=None):
         """
         LDAPConnection class
 
@@ -69,6 +70,11 @@ class LDAPConnection:
         :param string baseDN:
         :param string dstIp:
         :param string srcIp:
+        :param integer port:
+        :param integer tls:
+        :param String certPath:
+        :param integer verifyMode:
+        :param Function callback:
 
         :return: a LDAP instance, if not raises a LDAPSessionError exception
         """
@@ -81,11 +87,15 @@ class LDAPConnection:
         self._dstIp = dstIp
 
         if url.startswith('ldap://'):
-            self._dstPort = 389
+            self._dstPort = port if port else 389
             self._SSL = False
             self._dstHost = url[7:]
         elif url.startswith('ldaps://'):
-            self._dstPort = 636
+            self._dstPort = port if port else 636
+            self.tls = tls if tls else SSL.TLSv1_2_METHOD
+            self.certPath = certPath
+            self.verifyMode = verifyMode
+            self.callback = callback
             self._SSL = True
             self._dstHost = url[8:]
         elif url.startswith('gc://'):
@@ -114,7 +124,10 @@ class LDAPConnection:
             self._socket.connect(sa)
         else:
             # Switching to TLS now
-            ctx = SSL.Context(SSL.TLSv1_METHOD)
+            ctx = SSL.Context(self.tls)
+            if self.certPath is not None:
+                ctx.load_verify_locations(cafile=self.certPath)
+                ctx.set_verify(self.verifyMode, self.callback)
             # ctx.set_cipher_list('RC4')
             self._socket = SSL.Connection(ctx, self._socket)
             if srcIp:
@@ -652,3 +665,4 @@ class LDAPSearchError(LDAPSessionError):
 
     def getAnswers(self):
         return self.answers
+s

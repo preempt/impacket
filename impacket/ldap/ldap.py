@@ -665,4 +665,3 @@ class LDAPSearchError(LDAPSessionError):
 
     def getAnswers(self):
         return self.answers
-s

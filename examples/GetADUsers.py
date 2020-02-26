@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -19,46 +19,22 @@
 # Reference for:
 #     LDAP
 #
-
-
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 import argparse
 import logging
-import os
 import sys
 from datetime import datetime
-from binascii import hexlify, unhexlify
 
-from pyasn1.codec.der import decoder
 from impacket import version
-from impacket.dcerpc.v5.samr import UF_ACCOUNTDISABLE, UF_NORMAL_ACCOUNT
+from impacket.dcerpc.v5.samr import UF_ACCOUNTDISABLE
 from impacket.examples import logger
-from impacket.krb5 import constants
-from impacket.krb5.asn1 import TGS_REP
-from impacket.krb5.ccache import CCache
-from impacket.krb5.kerberosv5 import getKerberosTGT, getKerberosTGS
-from impacket.krb5.types import Principal
 from impacket.ldap import ldap, ldapasn1
 from impacket.smbconnection import SMBConnection
 
 
 class GetADUsers:
-    @staticmethod
-    def printTable(items, header):
-        colLen = []
-        for i, col in enumerate(header):
-            rowMaxLen = max([len(row[i]) for row in items])
-            colLen.append(max(rowMaxLen, len(col)))
-
-        outputFormat = ' '.join(['{%d:%ds} ' % (num, width) for num, width in enumerate(colLen)])
-
-        # Print header
-        print outputFormat.format(*header)
-        print '  '.join(['-' * itemLen for itemLen in colLen])
-
-        # And now the rows
-        for row in items:
-            print outputFormat.format(*row)
-
     def __init__(self, username, password, domain, cmdLineOptions):
         self.options = cmdLineOptions
         self.__username = username
@@ -71,7 +47,7 @@ class GetADUsers:
         self.__target = None
         self.__kdcHost = cmdLineOptions.dc_ip
         self.__requestUser = cmdLineOptions.user
-        self.__allusers = cmdLineOptions.all_users
+        self.__all = cmdLineOptions.all
         if cmdLineOptions.hashes is not None:
             self.__lmhash, self.__nthash = cmdLineOptions.hashes.split(':')
 
@@ -83,6 +59,14 @@ class GetADUsers:
         # Remove last ','
         self.baseDN = self.baseDN[:-1]
 
+        # Let's calculate the header and format
+        self.__header = ["Name", "Email", "PasswordLastSet", "LastLogon"]
+        # Since we won't process all rows at once, this will be fixed lengths
+        self.__colLen = [20, 30, 19, 19]
+        self.__outputFormat = ' '.join(['{%d:%ds} ' % (num, width) for num, width in enumerate(self.__colLen)])
+
+
+
     def getMachineName(self):
         if self.__kdcHost is not None:
             s = SMBConnection(self.__kdcHost, self.__kdcHost)
@@ -91,9 +75,10 @@ class GetADUsers:
         try:
             s.login('', '')
         except Exception:
-            logging.debug('Error while anonymous logging into %s' % self.__domain)
-
-        s.logoff()
+            if s.getServerName() == '':
+                raise Exception('Error while anonymous logging into %s' % self.__domain)
+        else:
+            s.logoff()
         return s.getServerName()
 
     @staticmethod
@@ -101,6 +86,38 @@ class GetADUsers:
         t -= 116444736000000000
         t /= 10000000
         return t
+
+    def processRecord(self, item):
+        if isinstance(item, ldapasn1.SearchResultEntry) is not True:
+            return
+        sAMAccountName = ''
+        pwdLastSet = ''
+        mail = ''
+        lastLogon = 'N/A'
+        try:
+            for attribute in item['attributes']:
+                if str(attribute['type']) == 'sAMAccountName':
+                    if attribute['vals'][0].asOctets().decode('utf-8').endswith('$') is False:
+                        # User Account
+                        sAMAccountName = attribute['vals'][0].asOctets().decode('utf-8')
+                elif str(attribute['type']) == 'pwdLastSet':
+                    if str(attribute['vals'][0]) == '0':
+                        pwdLastSet = '<never>'
+                    else:
+                        pwdLastSet = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
+                elif str(attribute['type']) == 'lastLogon':
+                    if str(attribute['vals'][0]) == '0':
+                        lastLogon = '<never>'
+                    else:
+                        lastLogon = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
+                elif str(attribute['type']) == 'mail':
+                    mail = str(attribute['vals'][0])
+
+            print((self.__outputFormat.format(*[sAMAccountName, mail, pwdLastSet, lastLogon])))
+        except Exception as e:
+            logging.debug("Exception", exc_info=True)
+            logging.error('Skipping item, cannot process due to error %s' % str(e))
+            pass
 
     def run(self):
         if self.__doKerberos:
@@ -119,7 +136,7 @@ class GetADUsers:
             else:
                 ldapConnection.kerberosLogin(self.__username, self.__password, self.__domain, self.__lmhash, self.__nthash,
                                              self.__aesKey, kdcHost=self.__kdcHost)
-        except ldap.LDAPSessionError, e:
+        except ldap.LDAPSessionError as e:
             if str(e).find('strongerAuthRequired') >= 0:
                 # We need to try SSL
                 ldapConnection = ldap.LDAPConnection('ldaps://%s' % self.__target, self.baseDN, self.__kdcHost)
@@ -131,11 +148,16 @@ class GetADUsers:
             else:
                 raise
 
+        logging.info('Querying %s for information about domain.' % self.__target)
+        # Print header
+        print((self.__outputFormat.format(*self.__header)))
+        print(('  '.join(['-' * itemLen for itemLen in self.__colLen])))
+
         # Building the search filter
-        if self.__allusers:
+        if self.__all:
             searchFilter = "(&(sAMAccountName=*)(objectCategory=user)"
         else:
-            searchFilter = "(&(sAMAccountName=*)(mail=*)"
+            searchFilter = "(&(sAMAccountName=*)(mail=*)(!(UserAccountControl:1.2.840.113556.1.4.803:=%d))" % UF_ACCOUNTDISABLE
 
         if self.__requestUser is not None:
             searchFilter += '(sAMAccountName:=%s))' % self.__requestUser
@@ -143,74 +165,28 @@ class GetADUsers:
             searchFilter += ')'
 
         try:
-            logging.info('Querying %s for information about domain. Be patient...' % self.__target)
-            sc = ldap.SimplePagedResultsControl()
-            resp = ldapConnection.search(searchFilter=searchFilter,
-                                         attributes=['sAMAccountName', 'pwdLastSet', 'mail', 'lastLogon'],
-                                         sizeLimit=0, searchControls = [sc])
-        except ldap.LDAPSearchError, e:
-            if e.getErrorString().find('sizeLimitExceeded') >= 0:
-                logging.debug('sizeLimitExceeded exception caught, giving up and processing the data received')
-                # We reached the sizeLimit, process the answers we have already and that's it. Until we implement
-                # paged queries
-                resp = e.getAnswers()
-                pass
-            else:
+            logging.debug('Search Filter=%s' % searchFilter)
+            sc = ldap.SimplePagedResultsControl(size=100)
+            ldapConnection.search(searchFilter=searchFilter,
+                                  attributes=['sAMAccountName', 'pwdLastSet', 'mail', 'lastLogon'],
+                                  sizeLimit=0, searchControls = [sc], perRecordCallback=self.processRecord)
+        except ldap.LDAPSearchError:
                 raise
 
-        answers = []
-        logging.debug('Total of records returned %d' % len(resp))
-
-        for item in resp:
-            if isinstance(item, ldapasn1.SearchResultEntry) is not True:
-                continue
-            sAMAccountName =  ''
-            pwdLastSet = ''
-            mail = ''
-            lastLogon = 'N/A'
-            try:
-                for attribute in item['attributes']:
-                    if attribute['type'] == 'sAMAccountName':
-                        if str(attribute['vals'][0]).endswith('$') is False:
-                            # User Account
-                            sAMAccountName = str(attribute['vals'][0])
-                    elif attribute['type'] == 'pwdLastSet':
-                        if str(attribute['vals'][0]) == '0':
-                            pwdLastSet = '<never>'
-                        else:
-                            pwdLastSet = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
-                    elif attribute['type'] == 'lastLogon':
-                        if str(attribute['vals'][0]) == '0':
-                            lastLogon = '<never>'
-                        else:
-                            lastLogon = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
-                    elif attribute['type'] == 'mail':
-                        mail = str(attribute['vals'][0])
-
-                answers.append([sAMAccountName, mail, pwdLastSet, lastLogon])
-            except Exception, e:
-                logging.error('Skipping item, cannot process due to error %s' % str(e))
-                pass
-
-        if len(answers)>0:
-            self.printTable(answers, header=[ "Name", "Email", "PasswordLastSet", "LastLogon"])
-            print '\n\n'
-
-        else:
-            print "No entries found!"
-
+        ldapConnection.close()
 
 # Process command-line arguments.
 if __name__ == '__main__':
-    # Init the example's logger theme
-    logger.init()
-    print version.BANNER
+    print((version.BANNER))
 
     parser = argparse.ArgumentParser(add_help = True, description = "Queries target domain for users data")
 
     parser.add_argument('target', action='store', help='domain/username[:password]')
     parser.add_argument('-user', action='store', metavar='username', help='Requests data for specific user ')
-    parser.add_argument('-all-users', action='store_true', help='Return all users, including those with no email addresses')
+    parser.add_argument('-all', action='store_true', help='Return all users, including those with no email '
+                                                           'addresses and disabled accounts. When used with -user it '
+                                                          'will return user\'s info even if the account is disabled')
+    parser.add_argument('-ts', action='store_true', help='Adds timestamp to every logging output')
     parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
 
     group = parser.add_argument_group('authentication')
@@ -233,8 +209,13 @@ if __name__ == '__main__':
 
     options = parser.parse_args()
 
+    # Init the example's logger theme
+    logger.init(options.ts)
+
     if options.debug is True:
         logging.getLogger().setLevel(logging.DEBUG)
+        # Print the Library's installation path
+        logging.debug(version.getInstallationPath())
     else:
         logging.getLogger().setLevel(logging.INFO)
 
@@ -249,7 +230,7 @@ if __name__ == '__main__':
         password = password + '@' + address.rpartition('@')[0]
         address = address.rpartition('@')[2]
 
-    if domain is '':
+    if domain == '':
         logging.critical('Domain should be specified!')
         sys.exit(1)
 
@@ -263,7 +244,8 @@ if __name__ == '__main__':
     try:
         executer = GetADUsers(username, password, domain, options)
         executer.run()
-    except Exception, e:
-        #import traceback
-        #print traceback.print_exc()
-        print str(e)
+    except Exception as e:
+        if logging.getLogger().level == logging.DEBUG:
+            import traceback
+            traceback.print_exc()
+        print((str(e)))

@@ -1,4 +1,4 @@
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -9,6 +9,8 @@
 # Description:
 #   SMB 2 and 3 Protocol Structures and constants [MS-SMB2]
 #
+from __future__ import division
+from __future__ import print_function
 
 from impacket.structure import Structure
 
@@ -273,6 +275,7 @@ FSCTL_SRV_COPYCHUNK_WRITE            = 0x001480F2
 FSCTL_LMR_REQUEST_RESILIENCY         = 0x001401D4
 FSCTL_QUERY_NETWORK_INTERFACE_INFO   = 0x001401FC
 FSCTL_SET_REPARSE_POINT              = 0x000900A4
+FSCTL_DELETE_REPARSE_POINT           = 0x000900AC
 FSCTL_DFS_GET_REFERRALS_EX           = 0x000601B0
 FSCTL_FILE_LEVEL_TRIM                = 0x00098208
 FSCTL_VALIDATE_NEGOTIATE_INFO        = 0x00140204
@@ -426,11 +429,11 @@ SMB2_ENCRYPTION_AES128_GCM = 0x0002
 class SMBPacketBase(Structure):
     def addCommand(self,command):
         # Pad to 8 bytes and put the offset of another SMBPacket
-        raise 'Implement This!' 
+        raise Exception('Implement This!')
 
     def isValidAnswer(self, status):
         if self['Status'] != status:
-            import smb3
+            from . import smb3
             raise smb3.SessionError(self['Status'], self)
         return True
 
@@ -784,7 +787,7 @@ class SMB2_CREATE_ALLOCATION_SIZE(Structure):
 
 class SMB2_CREATE_TIMEWARP_TOKEN(Structure):
     structure = (
-        ('AllocationSize','<Q=0'),
+        ('Timestamp','<Q=0'),
     )
 
 class SMB2_CREATE_REQUEST_LEASE(Structure):
@@ -902,7 +905,7 @@ class SMB2Read(Structure):
         ('_AlignPad','_-AlignPad','self["ReadChannelInfoOffset"] - (64 + self["StructureSize"] - 1)'),
         ('AlignPad',':=""'),
         ('_Buffer','_-Buffer','self["ReadChannelInfoLength"]'),
-        ('Buffer',':=0'),
+        ('Buffer',':="0"'),
     )
     def __init__(self, data = None):
         Structure.__init__(self,data)
@@ -1188,6 +1191,27 @@ class NETWORK_INTERFACE_INFO(Structure):
         ('Reserved','<L=0'),
         ('LinkSpeed','<Q=0'),
         ('SockAddr_Storage','128s=""'),
+    )
+
+class MOUNT_POINT_REPARSE_DATA_STRUCTURE(Structure):
+    structure = (
+        ("ReparseTag", "<L=0xA0000003"),
+        ("ReparseDataLen", "<H=len(self['PathBuffer']) + 8"),
+        ("Reserved", "<H=0"),
+        ("SubstituteNameOffset", "<H=0"),
+        ("SubstituteNameLength", "<H=0"),
+        ("PrintNameOffset", "<H=0"),
+        ("PrintNameLength", "<H=0"),
+        ("PathBuffer", ":")
+    )
+
+class MOUNT_POINT_REPARSE_GUID_DATA_STRUCTURE(Structure):
+    structure = (
+        ("ReparseTag", "<L=0xA0000003"),
+        ("ReparseDataLen", "<H=len(self['DataBuffer'])"),
+        ("Reserved", "<H=0"),
+        ("ReparseGuid", "16s=''"),
+        ("DataBuffer", ":")
     )
 
 class SMB2Ioctl_Response(Structure):

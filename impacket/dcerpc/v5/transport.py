@@ -1,4 +1,4 @@
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -9,16 +9,17 @@
 # Description:
 #   Transport implementations for the DCE/RPC protocol.
 #
+from __future__ import division
+from __future__ import print_function
 
-import re
-import socket
 import binascii
 import os
+import re
+import socket
 
-from impacket.smbconnection import smb, SMBConnection
-from impacket import nmb
 from impacket import ntlm
 from impacket.dcerpc.v5.rpcrt import DCERPCException, DCERPC_v5, DCERPC_v4
+from impacket.smbconnection import SMBConnection
 
 
 class DCERPCStringBinding:
@@ -66,12 +67,15 @@ class DCERPCStringBinding:
 
 def DCERPCStringBindingCompose(uuid=None, protocol_sequence='', network_address='', endpoint='', options=[]):
     s = ''
-    if uuid: s += uuid + '@'
+    if uuid:
+        s += uuid + '@'
     s += protocol_sequence + ':'
-    if network_address: s += network_address
+    if network_address:
+        s += network_address
     if endpoint or options:
         s += '[' + endpoint
-        if options: s += ',' + ','.join(options)
+        if options:
+            s += ',' + ','.join(options)
         s += ']'
 
     return s
@@ -137,17 +141,22 @@ class DCERPCTransport:
         self._kdcHost  = None
         self.__kdcHostTargetDomain = None
         self.set_credentials('','')
+        # Strict host validation - off by default and currently only for
+        # SMBTransport
+        self._strict_hostname_validation = False
+        self._validation_allow_absent = True
+        self._accepted_hostname = ''
 
     def connect(self, srcIp=None):
-        raise RuntimeError, 'virtual function'
+        raise RuntimeError('virtual function')
     def send(self,data=0, forceWriteAndx = 0, forceRecv = 0):
-        raise RuntimeError, 'virtual function'
+        raise RuntimeError('virtual function')
     def recv(self, forceRecv = 0, count = 0):
-        raise RuntimeError, 'virtual function'
+        raise RuntimeError('virtual function')
     def disconnect(self):
-        raise RuntimeError, 'virtual function'
+        raise RuntimeError('virtual function')
     def get_socket(self):
-        raise RuntimeError, 'virtual function'
+        raise RuntimeError('virtual function')
 
     def get_connect_timeout(self):
         return self.__connect_timeout
@@ -203,6 +212,11 @@ class DCERPCTransport:
         else:
             self._max_send_frag = send_fragment_size
 
+    def set_hostname_validation(self, validate, accept_empty, hostname):
+        self._strict_hostname_validation = validate
+        self._validation_allow_absent = accept_empty
+        self._accepted_hostname = hostname
+
     def set_default_max_fragment_size(self):
         # default is 0: don't fragment.
         # subclasses may override this method
@@ -216,7 +230,7 @@ class DCERPCTransport:
             self._lmhash,
             self._nthash,
             self._aesKey,
-            self._TGT, 
+            self._TGT,
             self._TGS)
 
     def set_credentials(self, username, password, domain='', lmhash='', nthash='', aesKey='', TGT=None, TGS=None):
@@ -227,8 +241,10 @@ class DCERPCTransport:
         self._TGT      = TGT
         self._TGS      = TGS
         if lmhash != '' or nthash != '':
-            if len(lmhash) % 2:     lmhash = '0%s' % lmhash
-            if len(nthash) % 2:     nthash = '0%s' % nthash
+            if len(lmhash) % 2:
+                lmhash = '0%s' % lmhash
+            if len(nthash) % 2:
+                nthash = '0%s' % nthash
             try: # just in case they were converted already
                self._lmhash = binascii.unhexlify(lmhash)
                self._nthash = binascii.unhexlify(nthash)
@@ -238,7 +254,7 @@ class DCERPCTransport:
                pass
 
     def doesSupportNTLMv2(self):
-        # By default we'll be returning the library's deafult. Only on SMB Transports we might be able to know it beforehand
+        # By default we'll be returning the library's default. Only on SMB Transports we might be able to know it beforehand
         return ntlm.USE_NTLMv2
 
     def get_dce_rpc(self):
@@ -262,7 +278,7 @@ class UDPTransport(DCERPCTransport):
             self.__socket.settimeout(self.get_connect_timeout())
             if srcIp:
                 self.__socket.bind((srcIp, 0))
-        except socket.error, msg:
+        except socket.error as msg:
             self.__socket = None
             raise DCERPCException("Could not connect: %s" % msg)
 
@@ -305,7 +321,7 @@ class TCPTransport(DCERPCTransport):
             if srcIp:
                 self.__socket.bind((srcIp, 0))
             self.__socket.connect(sa)
-        except socket.error, msg:
+        except socket.error as msg:
             self.__socket.close()
             raise DCERPCException("Could not connect: %s" % msg)
         return 1
@@ -313,7 +329,7 @@ class TCPTransport(DCERPCTransport):
     def disconnect(self):
         try:
             self.__socket.close()
-        except socket.error, msg:
+        except socket.error:
             self.__socket = None
             return 0
         return 1
@@ -332,7 +348,7 @@ class TCPTransport(DCERPCTransport):
 
     def recv(self, forceRecv = 0, count = 0):
         if count:
-            buffer = ''
+            buffer = b''
             while len(buffer) < count:
                buffer += self.__socket.recv(count-len(buffer))
         else:
@@ -388,6 +404,8 @@ class SMBTransport(DCERPCTransport):
         if not self.__smb_connection:
             self.__smb_connection = SMBConnection(self.getRemoteName(), self.getRemoteHost(), sess_port=self.get_dport(),
                                                   preferredDialect=self.__prefDialect, srcIp=srcIp)
+            if self._strict_hostname_validation:
+                self.__smb_connection.setHostnameValidation(self._strict_hostname_validation, self._validation_allow_absent, self._accepted_hostname)
 
     def connect(self, srcIp=None):
         # Check if we have a smb connection already setup
@@ -410,6 +428,7 @@ class SMBTransport(DCERPCTransport):
         # that's up for the caller
         if self.__existing_smb is False:
             self.__smb_connection.logoff()
+            self.__smb_connection.close()
             self.__smb_connection = 0
 
     def send(self,data, forceWriteAndx = 0, forceRecv = 0):

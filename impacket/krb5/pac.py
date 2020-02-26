@@ -1,4 +1,4 @@
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -9,7 +9,6 @@
 # Description:
 #   [MS-PAC] Implementation
 #
-
 from impacket.dcerpc.v5.dtypes import ULONG, RPC_UNICODE_STRING, FILETIME, PRPC_SID, USHORT
 from impacket.dcerpc.v5.ndr import NDRSTRUCT, NDRUniConformantArray, NDRPOINTER
 from impacket.dcerpc.v5.nrpc import USER_SESSION_KEY, CHAR_FIXED_8_ARRAY, PUCHAR_ARRAY, PRPC_UNICODE_STRING_ARRAY
@@ -19,7 +18,7 @@ from impacket.structure import Structure
 ################################################################################
 # CONSTANTS
 ################################################################################
-# From http://msdn.microsoft.com/en-us/library/aa302203.aspx#msdn_pac_credentials
+# From https://msdn.microsoft.com/library/aa302203#msdn_pac_credentials
 # and http://diswww.mit.edu/menelaus.mit.edu/cvs-krb5/25862
 PAC_LOGON_INFO       = 1
 PAC_CREDENTIALS_INFO = 2
@@ -166,8 +165,8 @@ class NTLM_SUPPLEMENTAL_CREDENTIAL(NDRSTRUCT):
     structure = (
         ('Version', ULONG),
         ('Flags', ULONG),
-        ('LmPassword', '16s=""'),
-        ('NtPassword', '16s=""'),
+        ('LmPassword', '16s=b""'),
+        ('NtPassword', '16s=b""'),
     )
 
 # 2.7 PAC_CLIENT_INFO
@@ -234,5 +233,3 @@ class VALIDATION_INFO(TypeSerialization1):
     structure = (
         ('Data', PKERB_VALIDATION_INFO),
     )
-
-

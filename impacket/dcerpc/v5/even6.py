@@ -1,4 +1,4 @@
-# Copyright (c) 2017 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 # Copyright (c) 2017 @MrAnde7son
 #
 # This software is provided under under a slightly modified version
@@ -12,7 +12,7 @@
 #
 #   Best way to learn how to use these calls is to grab the protocol standard
 #   so you understand what the call does, and then read the test case located
-#   at https://github.com/CoreSecurity/impacket/tree/master/impacket/testcases/SMB_RPC
+#   at https://github.com/SecureAuthCorp/impacket/tree/master/tests/SMB_RPC
 #
 #   Some calls have helper functions, which makes it even easier to use.
 #   They are located at the end of this file.
@@ -33,7 +33,7 @@ class DCERPCSessionError(DCERPCException):
 
     def __str__(self):
         key = self.error_code
-        if system_errors.ERROR_MESSAGES.has_key(key):
+        if key in system_errors.ERROR_MESSAGES:
             error_msg_short = system_errors.ERROR_MESSAGES[key][0]
             error_msg_verbose = system_errors.ERROR_MESSAGES[key][1]
             return 'EVEN6 SessionError: code: 0x%x - %s - %s' % (self.error_code, error_msg_short, error_msg_verbose)
@@ -315,7 +315,7 @@ def hEvtRpcQueryNext(dce, handle, numRequestedRecords, timeOutEnd=1000):
     while status == system_errors.ERROR_MORE_DATA:
         try:
             resp = dce.request(request)
-        except DCERPCException, e:
+        except DCERPCException as e:
             if str(e).find('ERROR_NO_MORE_ITEMS') < 0:
                 raise
             elif str(e).find('ERROR_TIMEOUT') < 0:
@@ -342,4 +342,3 @@ def hEvtRpcGetChannelList(dce):
     request['Flags'] = 0
     resp = dce.request(request)
     return resp
-

@@ -1,4 +1,4 @@
-# Copyright (c) 2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -575,7 +575,7 @@ class SDFlagsControlValue(univ.Sequence):
     )
 
 class SDFlagsControl(Control):
-    def __init__(self, criticality=None, flags=0x00000007L, **kwargs):
+    def __init__(self, criticality=None, flags=0x00000007, **kwargs):
         Control.__init__(self, **kwargs)
         self['controlType'] = CONTROL_SDFLAGS
         if criticality is not None:

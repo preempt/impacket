@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -22,7 +22,7 @@
 #	objFile.Close
 #
 #
-# then excute this script this way, VBS will be triggered once
+# then execute this script this way, VBS will be triggered once
 # somebody opens calc.exe:
 #
 #  wmipersist.py domain.net/adminuser:mypwd@targetHost install -name ASEC 
@@ -43,7 +43,8 @@
 #
 # Reference for:
 #  DCOM/WMI
-
+from __future__ import division
+from __future__ import print_function
 import sys
 import argparse
 import logging
@@ -153,7 +154,7 @@ class WMIPERSISTENCE:
 if __name__ == '__main__':
     # Init the example's logger theme
     logger.init()
-    print version.BANNER
+    print(version.BANNER)
 
     parser = argparse.ArgumentParser(add_help = True, description = "Creates/Removes a WMI Event Consumer/Filter and "
                                "link between both to execute Visual Basic based on the WQL filter or timer specified.")
@@ -197,6 +198,8 @@ if __name__ == '__main__':
         
     if options.debug is True:
         logging.getLogger().setLevel(logging.DEBUG)
+        # Print the Library's installation path
+        logging.debug(version.getInstallationPath())
     else:
         logging.getLogger().setLevel(logging.INFO)
 
@@ -229,8 +232,9 @@ if __name__ == '__main__':
 
         executer = WMIPERSISTENCE(username, password, domain, options)
         executer.run(address)
-    except (Exception, KeyboardInterrupt), e:
-        #import traceback
-        #print traceback.print_exc()
+    except (Exception, KeyboardInterrupt) as e:
+        if logging.getLogger().level == logging.DEBUG:
+            import traceback
+            traceback.print_exc()
         logging.error(e)
     sys.exit(0)

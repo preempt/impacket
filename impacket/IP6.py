@@ -1,4 +1,4 @@
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -8,9 +8,9 @@
 import struct
 import array
 
-from ImpactPacket import Header
-from IP6_Address import IP6_Address
-from IP6_Extension_Headers import IP6_Extension_Header
+from impacket.ImpactPacket import Header
+from impacket.IP6_Address import IP6_Address
+from impacket.IP6_Extension_Headers import IP6_Extension_Header
 
 from impacket import LOG
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -14,10 +14,10 @@
 #  Structure
 #
 
-
+from __future__ import division
+from __future__ import print_function
 import argparse
 import sys
-import string
 import os
 import logging
 
@@ -35,7 +35,7 @@ if __name__ == '__main__':
             self.intro = '[!] Press help for extra shell commands'
 
         def do_help(self, line):
-            print """
+            print("""
      lcd {path}                 - changes the current local directory to {path}
      exit                       - terminates the server process (and this session)
      enable_xp_cmdshell         - you know what it means
@@ -43,7 +43,7 @@ if __name__ == '__main__':
      xp_cmdshell {cmd}          - executes cmd using xp_cmdshell
      sp_start_job {cmd}         - executes cmd using the sql server agent (blind)
      ! {cmd}                    - executes a local shell cmd
-     """ 
+     """) 
 
         def do_shell(self, s):
             os.system(s)
@@ -74,7 +74,7 @@ if __name__ == '__main__':
 
         def do_lcd(self, s):
             if s == '':
-                print os.getcwd()
+                print(os.getcwd())
             else:
                 os.chdir(s)
     
@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
     # Init the example's logger theme
     logger.init()
-    print version.BANNER
+    print(version.BANNER)
 
     parser = argparse.ArgumentParser(add_help = True, description = "TDS client implementation (SSL supported).")
 
@@ -144,6 +144,8 @@ if __name__ == '__main__':
 
     if options.debug is True:
         logging.getLogger().setLevel(logging.DEBUG)
+        # Print the Library's installation path
+        logging.debug(version.getInstallationPath())
     else:
         logging.getLogger().setLevel(logging.INFO)
 
@@ -167,7 +169,7 @@ if __name__ == '__main__':
     if options.aesKey is not None:
         options.k = True
 
-    ms_sql = tds.MSSQL(address, string.atoi(options.port))
+    ms_sql = tds.MSSQL(address, int(options.port))
     ms_sql.connect()
     try:
         if options.k is True:
@@ -176,7 +178,8 @@ if __name__ == '__main__':
         else:
             res = ms_sql.login(options.db, username, password, domain, options.hashes, options.windows_auth)
         ms_sql.printReplies()
-    except Exception, e:
+    except Exception as e:
+        logging.debug("Exception:", exc_info=True)
         logging.error(str(e))
         res = False
     if res is True:
@@ -185,6 +188,6 @@ if __name__ == '__main__':
             shell.cmdloop()
         else:
             for line in options.file.readlines():
-                print "SQL> %s" % line,
+                print("SQL> %s" % line, end=' ')
                 shell.onecmd(line)
     ms_sql.disconnect()

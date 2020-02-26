@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# Copyright (c) 2013-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -28,8 +27,14 @@ class TcpShell:
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #Bind on localhost
         serversocket.bind(('127.0.0.1', self.port))
-        #Dont allow a backlog
+        #Don't allow a backlog
         serversocket.listen(0)
         self.connection, host = serversocket.accept()
-        #Create a file object from the socket
-        self.socketfile = self.connection.makefile()
+        #Create file objects from the socket
+        self.stdin = self.connection.makefile("r")
+        self.stdout = self.connection.makefile("w")
+
+    def close(self):
+        self.stdout.close()
+        self.stdin.close()
+        self.connection.close()

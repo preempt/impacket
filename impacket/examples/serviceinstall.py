@@ -1,4 +1,4 @@
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -20,12 +20,18 @@ import string
 from impacket.dcerpc.v5 import transport, srvs, scmr
 from impacket import smb,smb3, LOG
 from impacket.smbconnection import SMBConnection
+from impacket.smb3structs import FILE_WRITE_DATA, FILE_DIRECTORY_FILE
 
 class ServiceInstall:
-    def __init__(self, SMBObject, exeFile, service_name=None, binary_service_name=None):
+    def __init__(self, SMBObject, exeFile, serviceName='', binary_service_name=None):
         self._rpctransport = 0
-        self.__service_name = ''.join([random.choice(string.letters) for i in range(4)]) if service_name is None else service_name
-        self.__binary_service_name = ''.join([random.choice(string.letters) for i in range(8)]) + '.exe' if binary_service_name is None else binary_service_name
+        self.__service_name = serviceName if len(serviceName) > 0  else  ''.join([random.choice(string.ascii_letters) for i in range(4)])
+
+        if binary_service_name is None:
+            self.__binary_service_name = ''.join([random.choice(string.ascii_letters) for i in range(8)]) + '.exe'
+        else:
+            self.__binary_service_name = binary_service_name
+            
         self.__exeFile = exeFile
 
         # We might receive two different types of objects, always end up
@@ -44,7 +50,9 @@ class ServiceInstall:
         # Setup up a DCE SMBTransport with the connection already in place
         LOG.info("Requesting shares on %s....." % (self.connection.getRemoteHost()))
         try:
-            self._rpctransport = transport.SMBTransport(self.connection.getRemoteHost(), self.connection.getRemoteHost(),filename = r'\srvsvc', smb_connection = self.connection)
+            self._rpctransport = transport.SMBTransport(self.connection.getRemoteHost(),
+                                                        self.connection.getRemoteHost(),filename = r'\srvsvc',
+                                                        smb_connection = self.connection)
             dce_srvs = self._rpctransport.get_dce_rpc()
             dce_srvs.connect()
 
@@ -62,7 +70,7 @@ class ServiceInstall:
         # First we try to open the service in case it exists. If it does, we remove it.
         try:
             resp =  scmr.hROpenServiceW(self.rpcsvc, handle, self.__service_name+'\x00')
-        except Exception, e:
+        except Exception as e:
             if str(e).find('ERROR_SERVICE_DOES_NOT_EXIST') >= 0:
                 # We're good, pass the exception
                 pass
@@ -76,7 +84,8 @@ class ServiceInstall:
         # Create the service
         command = '%s\\%s' % (path, self.__binary_service_name)
         try:
-            resp = scmr.hRCreateServiceW(self.rpcsvc, handle,self.__service_name + '\x00', self.__service_name + '\x00', lpBinaryPathName=command + '\x00')
+            resp = scmr.hRCreateServiceW(self.rpcsvc, handle,self.__service_name + '\x00', self.__service_name + '\x00',
+                                         lpBinaryPathName=command + '\x00', dwStartType=scmr.SERVICE_DEMAND_START)
         except:
             LOG.critical("Error creating service %s on %s" % (self.__service_name, self.connection.getRemoteHost()))
             raise
@@ -86,7 +95,8 @@ class ServiceInstall:
     def openSvcManager(self):
         LOG.info("Opening SVCManager on %s....." % self.connection.getRemoteHost())
         # Setup up a DCE SMBTransport with the connection already in place
-        self._rpctransport = transport.SMBTransport(self.connection.getRemoteHost(), self.connection.getRemoteHost(),filename = r'\svcctl', smb_connection = self.connection)
+        self._rpctransport = transport.SMBTransport(self.connection.getRemoteHost(), self.connection.getRemoteHost(),
+                                                    filename = r'\svcctl', smb_connection = self.connection)
         self.rpcsvc = self._rpctransport.get_dce_rpc()
         self.rpcsvc.connect()
         self.rpcsvc.bind(scmr.MSRPC_UUID_SCMR)
@@ -107,7 +117,7 @@ class ServiceInstall:
             # We have a class instance, it must have a read method
             fh = src
         f = dst
-        pathname = string.replace(f,'/','\\')
+        pathname = f.replace('/','\\')
         try:
             self.connection.putFile(tree, pathname, fh.read)
         except:
@@ -117,21 +127,26 @@ class ServiceInstall:
 
     def findWritableShare(self, shares):
         # Check we can write a file on the shares, stop in the first one
+        writeableShare = None
         for i in shares['Buffer']:
             if i['shi1_type'] == srvs.STYPE_DISKTREE or i['shi1_type'] == srvs.STYPE_SPECIAL:
                share = i['shi1_netname'][:-1]
+               tid = 0
                try:
-                   self.connection.createDirectory(share,'BETO')
+                   tid = self.connection.connectTree(share)
+                   self.connection.openFile(tid, '\\', FILE_WRITE_DATA, creationOption=FILE_DIRECTORY_FILE)
                except:
-                   # Can't create, pass
+                   LOG.debug('Exception', exc_info=True)
                    LOG.critical("share '%s' is not writable." % share)
                    pass
                else:
                    LOG.info('Found writable share %s' % share)
-                   self.connection.deleteDirectory(share,'BETO')
-                   return str(share)
-        return None
-
+                   writeableShare = str(share)
+                   break
+               finally:
+                   if tid != 0:
+                       self.connection.disconnectTree(tid)
+        return writeableShare
 
     def install(self):
         if self.connection.isGuestSession():
@@ -172,8 +187,9 @@ class ServiceInstall:
                         scmr.hRCloseServiceHandle(self.rpcsvc, service)
                     scmr.hRCloseServiceHandle(self.rpcsvc, svcManager)
                     return True
-            except Exception, e:
+            except Exception as e:
                 LOG.critical("Error performing the installation, cleaning up: %s" %e)
+                LOG.debug("Exception", exc_info=True)
                 try:
                     scmr.hRControlService(self.rpcsvc, service, scmr.SERVICE_CONTROL_STOP)
                 except:
@@ -200,7 +216,7 @@ class ServiceInstall:
             if svcManager != 0:
                 resp = scmr.hROpenServiceW(self.rpcsvc, svcManager, self.__service_name+'\x00')
                 service = resp['lpServiceHandle']
-                LOG.info('Stoping service %s.....' % self.__service_name)
+                LOG.info('Stopping service %s.....' % self.__service_name)
                 try:
                     scmr.hRControlService(self.rpcsvc, service, scmr.SERVICE_CONTROL_STOP)
                 except:

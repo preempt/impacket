@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# Copyright (c) 2013-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -21,6 +20,8 @@ class NTLMRelayxConfig:
         # Set the value of the interface ip address
         self.interfaceIp = None
 
+        self.listeningPort = None
+
         self.domainIp = None
         self.machineAccount = None
         self.machineHashes = None
@@ -33,33 +34,66 @@ class NTLMRelayxConfig:
         self.randomtargets = False
         self.encoding = None
         self.ipv6 = False
+        self.remove_mic = False
 
-        #WPAD options
+        # WPAD options
         self.serve_wpad = False
         self.wpad_host = None
         self.wpad_auth_num = 0
         self.smb2support = False
 
-        #SMB options
+        # WPAD options
+        self.serve_wpad = False
+        self.wpad_host = None
+        self.wpad_auth_num = 0
+        self.smb2support = False
+
+        # SMB options
         self.exeFile = None
         self.command = None
         self.interactive = False
-        self.runSocks = False
+        self.enumLocalAdmins = False
 
-        #LDAP options
+        # LDAP options
         self.dumpdomain = True
         self.addda = True
+        self.aclattack = True
+        self.validateprivs = True
+        self.escalateuser = None
 
-        #MSSQL options
+        # MSSQL options
         self.queries = []
+
+        # Registered protocol clients
+        self.protocolClients = {}
+
+        # SOCKS options
+        self.runSocks = False
+        self.socksServer = None
+
+        # HTTP options
+        self.remove_target = False
+
+        # WebDAV options
+        self.serve_image = False
+
+    def setSMB2Support(self, value):
+        self.smb2support = value
+
+    def setProtocolClients(self, clients):
+        self.protocolClients = clients
 
     def setInterfaceIp(self, ip):
         self.interfaceIp = ip
 
-    def setRunSocks(self, socks):
-        self.runSocks = socks
+    def setListeningPort(self, port):
+        self.listeningPort = port
 
-    def setOutputFile(self,outputFile):
+    def setRunSocks(self, socks, server):
+        self.runSocks = socks
+        self.socksServer = server
+
+    def setOutputFile(self, outputFile):
         self.outputFile = outputFile
 
     def setTargets(self, target):
@@ -71,40 +105,55 @@ class NTLMRelayxConfig:
     def setCommand(self, command):
         self.command = command
 
+    def setEnumLocalAdmins(self, enumLocalAdmins):
+        self.enumLocalAdmins = enumLocalAdmins
+
     def setEncoding(self, encoding):
         self.encoding = encoding
 
-    def setMode(self,mode):
+    def setMode(self, mode):
         self.mode = mode
 
-    def setAttacks(self,attacks):
+    def setAttacks(self, attacks):
         self.attacks = attacks
 
-    def setLootdir(self,lootdir):
+    def setLootdir(self, lootdir):
         self.lootdir = lootdir
 
-    def setRedirectHost(self,redirecthost):
+    def setRedirectHost(self, redirecthost):
         self.redirecthost = redirecthost
 
-    def setDomainAccount( self, machineAccount,  machineHashes, domainIp):
+    def setDomainAccount(self, machineAccount, machineHashes, domainIp):
+        # Don't set this if we're not exploiting it
+        if not self.remove_target:
+            return
+        if machineAccount is None or machineHashes is None or domainIp is None:
+            raise Exception("You must specify machine-account/hashes/domain all together!")
         self.machineAccount = machineAccount
         self.machineHashes = machineHashes
         self.domainIp = domainIp
 
-    def setRandomTargets(self,randomtargets):
+    def setRandomTargets(self, randomtargets):
         self.randomtargets = randomtargets
 
-    def setLDAPOptions(self,dumpdomain,addda):
+    def setLDAPOptions(self, dumpdomain, addda, aclattack, validateprivs, escalateuser, addcomputer, delegateaccess, dumplaps, sid):
         self.dumpdomain = dumpdomain
         self.addda = addda
+        self.aclattack = aclattack
+        self.validateprivs = validateprivs
+        self.escalateuser = escalateuser
+        self.addcomputer = addcomputer
+        self.delegateaccess = delegateaccess
+        self.dumplaps = dumplaps
+        self.sid = sid
 
-    def setMSSQLOptions(self,queries):
+    def setMSSQLOptions(self, queries):
         self.queries = queries
 
-    def setInteractive(self,interactive):
+    def setInteractive(self, interactive):
         self.interactive = interactive
 
-    def setIMAPOptions(self,keyword,mailbox,dump_all,dump_max):
+    def setIMAPOptions(self, keyword, mailbox, dump_all, dump_max):
         self.keyword = keyword
         self.mailbox = mailbox
         self.dump_all = dump_all
@@ -114,7 +163,14 @@ class NTLMRelayxConfig:
         self.ipv6 = use_ipv6
 
     def setWpadOptions(self, wpad_host, wpad_auth_num):
-        if wpad_host != None:
+        if wpad_host is not None:
             self.serve_wpad = True
         self.wpad_host = wpad_host
         self.wpad_auth_num = wpad_auth_num
+
+    def setExploitOptions(self, remove_mic, remove_target):
+        self.remove_mic = remove_mic
+        self.remove_target = remove_target
+
+    def setWebDAVOptions(self, serve_image):
+        self.serve_image = serve_image

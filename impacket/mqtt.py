@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -12,21 +12,20 @@
 # messages on topics.
 #
 # References:
-#           http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.html
+#           https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.html
 #
 # ToDo:
 # [ ] Implement all the MQTT Control Packets and operations
 # [ ] Implement QoS = QOS_ASSURED_DELIVERY when publishing messages
 #
+from __future__ import print_function
 import logging
 import struct
 import socket
 from impacket.structure import Structure
-from impacket.winregistry import hexdump
 try:
-    import OpenSSL
-    from OpenSSL import SSL, crypto
-except:
+    from OpenSSL import SSL
+except ImportError:
     logging.critical("pyOpenSSL is not installed, can't continue")
     raise
 
@@ -270,7 +269,7 @@ class MQTTConnection:
             try:
                 message = MQTT_Packet(data)
                 remaining = data[len(message):]
-            except Exception, e:
+            except Exception:
                 # We need more data
                 remaining = data + self._socket.recv(REQUEST_SIZE)
             else:
@@ -347,7 +346,7 @@ class MQTTConnection:
 
         try:
             data = self.sendReceive(subscribePacket)[0]
-        except Exception, e:
+        except Exception as e:
             raise MQTTSessionError(errorString=str(e))
 
         subAck = MQTT_SubscribeACK(str(data))
@@ -410,11 +409,6 @@ if __name__ == '__main__':
         packets = mqtt.recv()
         for packet in packets:
             publish = MQTT_Publish(str(packet))
-            print '%s -> %s' % (publish['Topic']['Name'], publish['Message'])
+            print('%s -> %s' % (publish['Topic']['Name'], publish['Message']))
 
     mqtt.disconnect()
-
-
-
-
-

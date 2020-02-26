@@ -1,5 +1,5 @@
 Complete list of changes can be found at:
-https://github.com/CoreSecurity/impacket/commits/master
+https://github.com/SecureAuthCorp/impacket/commits/master
 
 June 2016: 0.9.15:
 1) Library improvements
@@ -74,8 +74,6 @@ May 2015: 0.9.13:
       d. Ccache support, compatible with Kerberos utilities (kinit, klist, etc).
       e. Support for RC4, AES128_CTS_HMAC_SHA1_96 and AES256_CTS_HMAC_SHA1_96 ciphers.
       f. Support for RPC_C_AUTHN_LEVEL_PKT_PRIVACY/RPC_C_AUTHN_LEVEL_PKT_INTEGRITY.
-   * SMB3 encryption support. Pycrypto experimental version that supports
-     AES_CCM is required.
    * [MS-SAMR]: Supplemental Credentials support (used by secretsdump.py)
    * SMBSERVER improvements:
       a. SMB2 (2.002) dialect experimental support. 
@@ -154,7 +152,7 @@ March 2013: 0.9.10:
      UUIDs used and that information is included as well. This could be helpful when reading a portmap output and to
      develop new functionality to interact against a target interface.
   d. smbexec.py: Another alternative to psexec. Less capabilities but might work on tight AV environments. Based on the
-     technique described at http://www.accuvant.com/blog/2012/11/13/owning-computers-without-shell-access. It also
+     technique described at https://www.optiv.com/blog/owning-computers-without-shell-access. It also
      supports instantiating a local smbserver to receive the output of the commandos executed for those situations
      where no share is available on the other end.
   e. smbrelayx.py: It now also listens on port 80 and forwards/reflects the credentials accordingly.

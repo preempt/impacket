@@ -1,4 +1,4 @@
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -11,13 +11,15 @@
 #
 #   Best way to learn how to use these calls is to grab the protocol standard
 #   so you understand what the call does, and then read the test case located
-#   at https://github.com/CoreSecurity/impacket/tree/master/impacket/testcases/SMB_RPC
+#   at https://github.com/SecureAuthCorp/impacket/tree/master/tests/SMB_RPC
 #
 #   Some calls have helper functions, which makes it even easier to use.
-#   They are located at the end of this file. 
+#   They are located at the end of this file.
 #   Helper functions start with "h"<name of the call>.
-#   There are test cases for them too. 
+#   There are test cases for them too.
 #
+
+
 from struct import unpack, pack
 
 from impacket.dcerpc.v5.ndr import NDRCALL, NDRSTRUCT, NDRPOINTER, NDRUniConformantVaryingArray, NDRUniConformantArray
@@ -35,9 +37,9 @@ class DCERPCSessionError(DCERPCException):
 
     def __str__( self ):
         key = self.error_code
-        if system_errors.ERROR_MESSAGES.has_key(key):
+        if key in system_errors.ERROR_MESSAGES:
             error_msg_short = system_errors.ERROR_MESSAGES[key][0]
-            error_msg_verbose = system_errors.ERROR_MESSAGES[key][1] 
+            error_msg_verbose = system_errors.ERROR_MESSAGES[key][1]
             return 'RRP SessionError: code: 0x%x - %s - %s' % (self.error_code, error_msg_short, error_msg_verbose)
         else:
             return 'RRP SessionError: unknown error code: 0x%x' % self.error_code
@@ -76,7 +78,7 @@ REG_MULTI_SZ            = 7
 REG_NONE                = 0
 REG_QWORD               = 11
 REG_QWORD_LITTLE_ENDIAN = 11
-REG_SZ                  = 1 
+REG_SZ                  = 1
 
 # 3.1.5.7 BaseRegCreateKey (Opnum 6)
 REG_CREATED_NEW_KEY     = 0x00000001
@@ -709,21 +711,21 @@ def packValue(valueType, value):
 
 def unpackValue(valueType, value):
     if valueType == REG_DWORD:
-        retData = unpack('<L', ''.join(value))[0]
+        retData = unpack('<L', b''.join(value))[0]
     elif valueType == REG_DWORD_BIG_ENDIAN:
-        retData = unpack('>L', ''.join(value))[0]
+        retData = unpack('>L', b''.join(value))[0]
     elif valueType == REG_EXPAND_SZ:
-        retData = ''.join(value).decode('utf-16le')
+        retData = b''.join(value).decode('utf-16le')
     elif valueType == REG_MULTI_SZ:
-        retData = ''.join(value).decode('utf-16le')
+        retData = b''.join(value).decode('utf-16le')
     elif valueType == REG_QWORD:
-        retData = unpack('<Q', ''.join(value))[0]
+        retData = unpack('<Q', b''.join(value))[0]
     elif valueType == REG_QWORD_LITTLE_ENDIAN:
-        retData = unpack('>Q', ''.join(value))[0]
+        retData = unpack('>Q', b''.join(value))[0]
     elif valueType == REG_SZ:
-        retData = ''.join(value).decode('utf-16le')
+        retData = b''.join(value).decode('utf-16le')
     else:
-        retData = ''.join(value)
+        retData = b''.join(value)
 
     return retData
 
@@ -788,7 +790,7 @@ def hBaseRegEnumKey(dce, hKey, dwIndex, lpftLastWriteTime = NULL):
     request['hKey'] = hKey
     request['dwIndex'] = dwIndex
     request.fields['lpNameIn'].fields['MaximumLength'] = 1024
-    request.fields['lpNameIn'].fields['Data'].fields['Data'].fields['MaximumCount'] = 1024/2
+    request.fields['lpNameIn'].fields['Data'].fields['Data'].fields['MaximumCount'] = 1024//2
     request['lpClassIn'] = ' '* 64
     request['lpftLastWriteTime'] = lpftLastWriteTime
 
@@ -809,11 +811,11 @@ def hBaseRegEnumValue(dce, hKey, dwIndex, dataLen=256):
             request.fields['lpValueNameIn'].fields['MaximumLength'] = dataLen*2
             request.fields['lpValueNameIn'].fields['Data'].fields['Data'].fields['MaximumCount'] = dataLen
 
-            request['lpData'] = ' ' * dataLen
+            request['lpData'] = b' ' * dataLen
             request['lpcbData'] = dataLen
             request['lpcbLen'] = dataLen
             resp = dce.request(request)
-        except DCERPCSessionError, e:
+        except DCERPCSessionError as e:
             if retries > 1:
                 LOG.debug('Too many retries when calling hBaseRegEnumValue, aborting')
                 raise
@@ -861,7 +863,7 @@ def hBaseRegOpenKey(dce, hKey, lpSubKey, dwOptions=0x00000001, samDesired = MAXI
     request['hKey'] = hKey
     request['lpSubKey'] = checkNullString(lpSubKey)
     request['dwOptions'] = dwOptions
-    request['samDesired'] = samDesired 
+    request['samDesired'] = samDesired
     return dce.request(request)
 
 def hBaseRegQueryInfoKey(dce, hKey):
@@ -870,7 +872,7 @@ def hBaseRegQueryInfoKey(dce, hKey):
     # Not the cleanest way, but oh well
     # Plus, Windows XP needs MaximumCount also set
     request.fields['lpClassIn'].fields['MaximumLength'] = 1024
-    request.fields['lpClassIn'].fields['Data'].fields['Data'].fields['MaximumCount'] = 1024/2
+    request.fields['lpClassIn'].fields['Data'].fields['Data'].fields['MaximumCount'] = 1024//2
     return dce.request(request)
 
 def hBaseRegQueryValue(dce, hKey, lpValueName, dataLen=512):
@@ -882,11 +884,11 @@ def hBaseRegQueryValue(dce, hKey, lpValueName, dataLen=512):
     # We need to be aware the size might not be enough, so let's catch ERROR_MORE_DATA exception
     while True:
         try:
-            request['lpData'] = ' ' * dataLen
+            request['lpData'] =b' ' * dataLen
             request['lpcbData'] = dataLen
             request['lpcbLen'] = dataLen
             resp = dce.request(request)
-        except DCERPCSessionError, e:
+        except DCERPCSessionError as e:
             if retries > 1:
                 LOG.debug('Too many retries when calling hBaseRegQueryValue, aborting')
                 raise
@@ -946,13 +948,13 @@ def hOpenCurrentConfig(dce, samDesired = MAXIMUM_ALLOWED):
     return dce.request(request)
 
 def hBaseRegQueryMultipleValues(dce, hKey, val_listIn):
-    # ToDo, check the result to see whether we need to 
+    # ToDo, check the result to see whether we need to
     # have a bigger buffer for the data to receive
     request = BaseRegQueryMultipleValues()
     request['hKey'] = hKey
 
     for item in  val_listIn:
-        itemn = RVALENT() 
+        itemn = RVALENT()
         itemn['ve_valuename'] = checkNullString(item['ValueName'])
         itemn['ve_valuelen'] = len(itemn['ve_valuename'])
         itemn['ve_valueptr'] = NULL
@@ -960,17 +962,17 @@ def hBaseRegQueryMultipleValues(dce, hKey, val_listIn):
         request['val_listIn'].append(itemn)
 
     request['num_vals'] = len(request['val_listIn'])
-    request['lpvalueBuf'] = list(' '*128)
+    request['lpvalueBuf'] = list(b' '*128)
     request['ldwTotsize'] = 128
 
     resp = dce.request(request)
     retVal = list()
     for item in resp['val_listOut']:
         itemn = dict()
-        itemn['ValueName'] = item['ve_valuename'] 
+        itemn['ValueName'] = item['ve_valuename']
         itemn['ValueData'] = unpackValue(item['ve_type'], resp['lpvalueBuf'][item['ve_valueptr'] : item['ve_valueptr']+item['ve_valuelen']])
         retVal.append(itemn)
- 
+
     return retVal
 
 def hBaseRegSaveKeyEx(dce, hKey, lpFile, pSecurityAttributes = NULL, flags=1):
@@ -998,4 +1000,3 @@ def hBaseRegDeleteValue(dce, hKey, lpValueName):
     request['hKey'] = hKey
     request['lpValueName'] = checkNullString(lpValueName)
     return dce.request(request)
-

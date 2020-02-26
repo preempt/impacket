@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# Copyright (c) 2013-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -8,128 +7,148 @@
 # Target utilities
 #
 # Author:
+#  Alberto Solino (@agsolino)
 #  Dirk-jan Mollema / Fox-IT (https://www.fox-it.com)
 #
 # Description:
-#     Classes for handling specified targets and keeping 
-# state of which targets have been processed
-import logging
+#     Classes for handling specified targets and keeping state of which targets have been processed
+#     Format of targets are based in URI syntax
+#         scheme://netloc/path
+#     where:
+#         scheme: the protocol to target (e.g. 'smb', 'mssql', 'all')
+#         netloc: int the form of domain\username@host:port (domain\username and port are optional, and don't forget
+#                 to escape the '\')
+#         path: only used by specific attacks (e.g. HTTP attack).
+#
+#     Some examples:
+#
+#         smb://1.1.1.1: It will target host 1.1.1.1 (protocol SMB) with any user connecting
+#         mssql://contoso.com\joe@10.1.1.1: It will target host 10.1.1.1 (protocol MSSQL) only when contoso.com\joe is
+#         connecting.
+#
+#  ToDo:
+# [ ]: Expand the ALL:// to all the supported protocols
+
+
 import os
 import random
-import re
 import time
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
+from impacket import LOG
 from threading import Thread
 
 
-class TargetsProcessor():
-    supported_protocols = ['SMB','HTTP','HTTPS','LDAP','MSSQL','LDAPS','IMAP','IMAPS']
-    def __init__(self,targetlistfile=None,singletarget=None):        
-        self.targetregex = re.compile(r'([a-zA-Z]+)://([a-zA-Z0-9\.\-_]+)(:[0-9]+)?/?(.+)?')
-        self.targetipregex = re.compile(r'[a-zA-Z\.\-_0-9]+')
-        self.clients_targets = {}
-        if targetlistfile is None:
+class TargetsProcessor:
+    def __init__(self, targetListFile=None, singleTarget=None, protocolClients=None, randomize=False):
+        # Here we store the attacks that already finished, mostly the ones that have usernames, since the
+        # other ones will never finish.
+        self.finishedAttacks = []
+        self.protocolClients = protocolClients
+        if targetListFile is None:
             self.filename = None
-            self.targets = [self.parse_target(singletarget)]
+            self.originalTargets = self.processTarget(singleTarget, protocolClients)
         else:
-            self.filename = targetlistfile
-            self.targets = []
-            self.read_targets()
+            self.filename = targetListFile
+            self.originalTargets = []
+            self.readTargets()
 
-    def read_targets(self):
+        if randomize is True:
+            # Randomize the targets based
+            random.shuffle(self.originalTargets)
+
+        self.generalCandidates = [x for x in self.originalTargets if x.username is None]
+        self.namedCandidates = [x for x in self.originalTargets if x.username is not None]
+
+    @staticmethod
+    def processTarget(target, protocolClients):
+        # Check if we have a single target, with no URI form
+        if target.find('://') <= 0:
+            # Target is a single IP, assuming it's SMB.
+            return [urlparse('smb://%s' % target)]
+
+        # Checks if it needs to expand the list if there's a all://*
+        retVals = []
+        if target[:3].upper() == 'ALL':
+            strippedTarget = target[3:]
+            for protocol in protocolClients:
+                retVals.append(urlparse('%s%s' % (protocol, strippedTarget)))
+            return retVals
+        else:
+            return [urlparse(target)]
+
+    def readTargets(self):
         try:
             with open(self.filename,'r') as f:
-                self.targets = []
+                self.originalTargets = []
                 for line in f:
-                    target = self.parse_target(line.strip())
-                    if target is not None:
-                        self.targets.append(target)
-        except IOError, e:
-            logging.error("Could not open file: %s" % self.filename)
-            logging.error(str(e))
-        if len(self.targets) == 0:
-            logging.critical("Warning: no valid targets specified!")
+                    target = line.strip()
+                    if target != '' and target[0] != '#':
+                        self.originalTargets.extend(self.processTarget(target, self.protocolClients))
+        except IOError as e:
+            LOG.error("Could not open file: %s - %s", self.filename, str(e))
 
-    def parse_target(self,targetline):
-        #Try a full target match in the form of protocol://target:port/path first
-        ftm = self.targetregex.match(targetline)
-        if ftm is not None:
-            if ftm.group(1).upper() not in self.supported_protocols:
-                logging.error("Unsupported protocol: %s" % ftm.group(1))
+        if len(self.originalTargets) == 0:
+            LOG.critical("Warning: no valid targets specified!")
+
+        self.generalCandidates = [x for x in self.originalTargets if x not in self.finishedAttacks and x.username is None]
+        self.namedCandidates = [x for x in self.originalTargets if x not in self.finishedAttacks and x.username is not None]
+
+    def logTarget(self, target, gotRelay = False, gotUsername = None):
+        # If the target has a username, we can safely remove it from the list. Mission accomplished.
+        if gotRelay is True:
+            if target.username is not None:
+                self.finishedAttacks.append(target)
+            elif gotUsername is not None:
+                # We have data about the username we relayed the connection for,
+                # for a target that didn't have username specified.
+                # Let's log it
+                newTarget = urlparse('%s://%s@%s%s' % (target.scheme, gotUsername.replace('/','\\'), target.netloc, target.path))
+                self.finishedAttacks.append(newTarget)
+
+    def getTarget(self, identity=None):
+        # ToDo: We should have another list of failed attempts (with user) and check that inside this method so we do not
+        # retry those targets.
+        if identity is not None and len(self.namedCandidates) > 0:
+            # We've been asked to match a username that is connected to us
+            # Do we have an explicit request for it?
+            for target in self.namedCandidates:
+                if target.username is not None:
+                    if target.username.upper() == identity.replace('/', '\\'):
+                        self.namedCandidates.remove(target)
+                        return target
+                    if target.username.find('\\') < 0:
+                        # Username with no domain, let's compare that way
+                        if target.username.upper() == identity.split('/')[1]:
+                            self.namedCandidates.remove(target)
+                            return target
+
+        # No identity match, let's just grab something from the generalCandidates list
+        # Assuming it hasn't been relayed already
+        if len(self.generalCandidates) > 0:
+            if identity is not None:
+                for target in self.generalCandidates:
+                    tmpTarget =  '%s://%s@%s' % (target.scheme, identity.replace('/','\\'), target.netloc)
+                    match = [x for x in self.finishedAttacks if x.geturl().upper() == tmpTarget.upper()]
+                    if len(match) == 0:
+                        self.generalCandidates.remove(target)
+                        return target
+                LOG.debug("No more targets for user %s" % identity)
                 return None
-            #Check if the port was specified
-            if ftm.group(3) is None:
-                port = self.get_default_port(ftm.group(1))
             else:
-                #Port regex includes the : remove this
-                port = int(ftm.group(3)[1:])
-            #Check if the path was specified
-            if ftm.group(4) is None:
-                path = ''
-            else:
-                path = ftm.group(4)
-            #Targets are always a tuple (protocol,host,port)
-            #TODO: Change this to an object so we can have proper representation as string?
-            return (ftm.group(1).upper(),ftm.group(2),port,path)
-        #Maybe the target is just an IP, this assumes its an SMB target
-        itm = self.targetipregex.match(targetline)
-        if itm is not None:
-            return ('SMB',itm.group(0),445,'')
-        #If both dont match, it is probably an invalid target
-        logging.error("Invalid target specification: " % targetline)
-        return None
+                return self.generalCandidates.pop()
+        else:
+            if len(self.originalTargets) > 0:
+                self.generalCandidates = [x for x in self.originalTargets if
+                                          x not in self.finishedAttacks and x.username is None]
 
-    def log_target(self,client,target):
-        try:
-            self.clients_targets[client].add(target)
-        except KeyError:
-            self.clients_targets[client] = set([target])
-        #print self.clients_targets
+        if len(self.generalCandidates) == 0 and len(self.namedCandidates) == 0:
+            #We are here, which means all the targets are already exhausted by the client
+            LOG.info("All targets processed!")
+            return None
 
-    def get_target(self,client,choose_random=False):
-        candidates = []
-        try:
-            targetlist = self.clients_targets[client]
-        except KeyError:
-            #Client is probably new
-            if choose_random:
-                return random.choice(self.targets)
-            else:
-                return self.targets[0]
-
-        for target in self.targets:
-            #Check if the target is already in the target list
-            if target not in targetlist:
-                #If random, populate candidates
-                if choose_random:
-                    candidates.append(target)
-                else:
-                    return target
-
-        #If we arrive here and have multiple candidates, randomly select one
-        if len(candidates) > 0:
-            return random.choice(candidates)
-
-        #We are here, which means all the targets are already exhausted by the client
-        logging.info("All targets processed for client %s" % client)
-        return random.choice(self.targets)
-
-    def get_default_port(self,protocol):
-        if protocol.upper() == 'SMB':
-            return 445
-        if protocol.upper() == 'HTTP':
-            return 80
-        if protocol.upper() == 'HTTPS':
-            return 443
-        if protocol.upper() == 'LDAP':
-            return 389
-        if protocol.upper() == 'LDAPS':
-            return 636
-        if protocol.upper() == 'MSSQL':
-            return 1433
-        if protocol.upper() == 'IMAP':
-            return 143
-        if protocol.upper() == 'IMAPS':
-            return 993
         return None
 
 class TargetsFileWatcher(Thread):
@@ -137,36 +156,12 @@ class TargetsFileWatcher(Thread):
         Thread.__init__(self)
         self.targetprocessor = targetprocessor
         self.lastmtime = os.stat(self.targetprocessor.filename).st_mtime
-        #print self.lastmtime
 
     def run(self):
         while True:
             mtime = os.stat(self.targetprocessor.filename).st_mtime
             if mtime > self.lastmtime:
-                logging.info('Targets file modified - refreshing')
+                LOG.info('Targets file modified - refreshing')
                 self.lastmtime = mtime
-                self.targetprocessor.read_targets()
+                self.targetprocessor.readTargets()
             time.sleep(1.0)
-
-class ProxyIpTranslator(Thread):
-    def __init__(self):
-        Thread.__init__(self)
-        self.regex = re.compile(r'SRC=([0-9\.]+) DST=([0-9\.]+) .*SPT=([0-9]+)')
-        self.iptranslations = {}
-    #-A POSTROUTING -o eth0 -j LOG --log-prefix="SMBrelay"
-    def run(self):
-        logging.info("Setting up Proxy translator - reading from kernel log")
-        for line in tail("-f", "/var/log/kern.log", _iter=True):
-            if "SMBrelay" in line:
-                m = self.regex.search(line)
-                if m is not None:
-                    self.iptranslations[(m.group(1),m.group(3))] = m.group(2)
-                    #logging.info('Found translation from ip: %s port: %s to IP: %s' % (m.group(1),m.group(3),m.group(2)))
-
-    #Look up the destination IP based on source IP and port
-    def translate(self,source_ip,source_port):
-        try:
-            return self.iptranslations[(source_ip,str(source_port))]
-        except KeyError:
-            return None
-

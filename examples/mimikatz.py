@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2003-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -13,7 +13,8 @@
 # Reference for:
 #  SMB DCE/RPC 
 #
-
+from __future__ import division
+from __future__ import print_function
 import argparse
 import cmd
 import logging
@@ -27,10 +28,10 @@ from impacket.dcerpc.v5.transport import DCERPCTransportFactory
 from impacket.examples import logger
 
 try:
-    from Crypto.Cipher import ARC4
+    from Cryptodome.Cipher import ARC4
 except Exception:
-    logging.critical("Warning: You don't have any crypto installed. You need PyCrypto")
-    logging.critical("See http://www.pycrypto.org/")
+    logging.critical("Warning: You don't have any crypto installed. You need pycryptodomex")
+    logging.critical("See https://pypi.org/project/pycryptodomex/")
 
 # If you wanna have readline like functionality in Windows, install pyreadline
 try:
@@ -66,11 +67,11 @@ class MimikatzShell(cmd.Cmd):
         publicKey = mimilib.MIMI_PUBLICKEY()
         publicKey['sessionType'] = mimilib.CALG_RC4
         publicKey['cbPublicKey'] = 144
-        publicKey['pbPublicKey'] = str(blob)
+        publicKey['pbPublicKey'] = blob.getData()
         resp = mimilib.hMimiBind(self.dce, publicKey)
-        blob = mimilib.PUBLICKEYBLOB(''.join(resp['serverPublicKey']['pbPublicKey']))
+        blob = mimilib.PUBLICKEYBLOB(b''.join(resp['serverPublicKey']['pbPublicKey']))
 
-        self.key = dh.getSharedSecret(''.join(blob['y'])[::-1])[-16:][::-1]
+        self.key = dh.getSharedSecret(blob['y'][::-1])[-16:][::-1]
         self.pHandle = resp['phMimi']
 
     def emptyline(self):
@@ -78,7 +79,8 @@ class MimikatzShell(cmd.Cmd):
 
     def precmd(self,line):
         # switch to unicode
-        return line.decode('utf-8')
+        #return line.encode('utf-8')
+        return line
 
     def default(self, line):
         if line.startswith('*'):
@@ -86,17 +88,16 @@ class MimikatzShell(cmd.Cmd):
         command = (line.strip('\n')+'\x00').encode('utf-16le')
         command = ARC4.new(self.key).encrypt(command)
         resp = mimilib.hMimiCommand(self.dce, self.pHandle, command)
-        cipherText = ''.join(resp['encResult'])
+        cipherText = b''.join(resp['encResult'])
         cipher = ARC4.new(self.key)
-        print cipher.decrypt(cipherText)
+        print(cipher.decrypt(cipherText).decode('utf-16le'))
 
     def onecmd(self,s):
         retVal = False
         try:
            retVal = cmd.Cmd.onecmd(self,s)
-        except Exception, e:
-           #import traceback
-           #print traceback.print_exc()
+        except Exception as e:
+           logging.debug("Exception:", exc_info=True)
            logging.error(e)
 
         return retVal
@@ -108,7 +109,7 @@ class MimikatzShell(cmd.Cmd):
 
     def do_shell(self, line):
         output = os.popen(line).read()
-        print output
+        print(output)
         self.last_output = output
 
     def do_help(self,line):
@@ -117,7 +118,7 @@ class MimikatzShell(cmd.Cmd):
 def main():
     # Init the example's logger theme
     logger.init()
-    print version.BANNER
+    print(version.BANNER)
     parser = argparse.ArgumentParser(add_help = True, description = "SMB client implementation.")
 
     parser.add_argument('target', action='store', help='[[domain/]username[:password]@]<targetName or address>')
@@ -138,10 +139,10 @@ def main():
     group = parser.add_argument_group('connection')
 
     group.add_argument('-dc-ip', action='store', metavar="ip address",
-                       help='IP Address of the domain controller. If ommited it use the domain part (FQDN) specified in '
+                       help='IP Address of the domain controller. If omitted it will use the domain part (FQDN) specified in '
                             'the target parameter')
     group.add_argument('-target-ip', action='store', metavar="ip address",
-                       help='IP Address of the target machine. If ommited it will use whatever was specified as target. '
+                       help='IP Address of the target machine. If omitted it will use whatever was specified as target. '
                             'This is useful when target is the NetBIOS name and you cannot resolve it')
 
     if len(sys.argv)==1:
@@ -152,6 +153,8 @@ def main():
 
     if options.debug is True:
         logging.getLogger().setLevel(logging.DEBUG)
+        # Print the Library's installation path
+        logging.debug(version.getInstallationPath())
     else:
         logging.getLogger().setLevel(logging.INFO)
 
@@ -188,7 +191,7 @@ def main():
     try:
         if username != '':
             try:
-                # Let's try to do everything thru SMB. If we'e lucky it might get everything encrypted
+                # Let's try to do everything through SMB. If we'e lucky it might get everything encrypted
                 rpctransport = DCERPCTransportFactory(r'ncacn_np:%s[\pipe\epmapper]'%address)
                 rpctransport.set_credentials(username, password, domain, lmhash, nthash, options.aesKey)
                 dce = rpctransport.get_dce_rpc()
@@ -210,7 +213,7 @@ def main():
                 dce.connect()
                 dce.bind(mimilib.MSRPC_UUID_MIMIKATZ)
                 bound = True
-            except Exception, e:
+            except Exception as e:
                 if str(e).find('ept_s_not_registered') >=0:
                     # Let's try ncacn_ip_tcp
                     stringBinding = epm.hept_map(address, mimilib.MSRPC_UUID_MIMIKATZ, protocol = 'ncacn_ip_tcp')
@@ -238,17 +241,15 @@ def main():
             logging.info("Executing commands from %s" % options.file.name)
             for line in options.file.readlines():
                 if line[0] != '#':
-                    print "# %s" % line,
+                    print("# %s" % line, end=' ')
                     shell.onecmd(line)
                 else:
-                    print line,
+                    print(line, end=' ')
         else:
             shell.cmdloop()
-    except Exception, e:
-        #import traceback
-        #print traceback.print_exc()
+    except Exception as e:
+        logging.debug("Exception:", exc_info=True)
         logging.error(str(e))
 
 if __name__ == "__main__":
     main()
-

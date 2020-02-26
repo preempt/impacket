@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2012-2016 CORE Security Technologies
+# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
 #
 # This software is provided under under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
@@ -12,7 +12,8 @@
 #
 # Reference for:
 #  DCE/RPC [MS-LSAT]
-
+from __future__ import division
+from __future__ import print_function
 import sys
 import logging
 import argparse
@@ -65,9 +66,10 @@ class LSALookupSid:
 
         try:
             self.__bruteForce(rpctransport, self.__maxRid)
-        except Exception, e:
-            #import traceback
-            #print traceback.print_exc()
+        except Exception as e:
+            if logging.getLogger().level == logging.DEBUG:
+                import traceback
+                traceback.print_exc()
             logging.critical(str(e))
             raise
 
@@ -85,7 +87,7 @@ class LSALookupSid:
 
         dce.bind(lsat.MSRPC_UUID_LSAT)
         
-        resp = lsat.hLsarOpenPolicy2(dce, MAXIMUM_ALLOWED | lsat.POLICY_LOOKUP_NAMES)
+        resp = lsad.hLsarOpenPolicy2(dce, MAXIMUM_ALLOWED | lsat.POLICY_LOOKUP_NAMES)
         policyHandle = resp['PolicyHandle']
 
         if self.__domain_sids: # get the Domain SID
@@ -99,8 +101,8 @@ class LSALookupSid:
 
         soFar = 0
         SIMULTANEOUS = 1000
-        for j in range(maxRid/SIMULTANEOUS+1):
-            if (maxRid - soFar) / SIMULTANEOUS == 0:
+        for j in range(maxRid//SIMULTANEOUS+1):
+            if (maxRid - soFar) // SIMULTANEOUS == 0:
                 sidsToCheck = (maxRid - soFar) % SIMULTANEOUS
             else: 
                 sidsToCheck = SIMULTANEOUS
@@ -109,11 +111,11 @@ class LSALookupSid:
                 break
 
             sids = list()
-            for i in xrange(soFar, soFar+sidsToCheck):
+            for i in range(soFar, soFar+sidsToCheck):
                 sids.append(domainSid + '-%d' % i)
             try:
                 lsat.hLsarLookupSids(dce, policyHandle, sids,lsat.LSAP_LOOKUP_LEVEL.LsapLookupWksta)
-            except DCERPCException, e:
+            except DCERPCException as e:
                 if str(e).find('STATUS_NONE_MAPPED') >= 0:
                     soFar += SIMULTANEOUS
                     continue
@@ -124,9 +126,9 @@ class LSALookupSid:
 
             for n, item in enumerate(resp['TranslatedNames']['Names']):
                 if item['Use'] != SID_NAME_USE.SidTypeUnknown:
-                    print "%d: %s\\%s (%s)" % (
+                    print("%d: %s\\%s (%s)" % (
                     soFar + n, resp['ReferencedDomains']['Domains'][item['DomainIndex']]['Name'], item['Name'],
-                    SID_NAME_USE.enumItems(item['Use']).name)
+                    SID_NAME_USE.enumItems(item['Use']).name))
             soFar += SIMULTANEOUS
 
         dce.disconnect()
@@ -136,23 +138,22 @@ class LSALookupSid:
 
 # Process command-line arguments.
 if __name__ == '__main__':
-    # Init the example's logger theme
-    logger.init()
     # Explicitly changing the stdout encoding format
     if sys.stdout.encoding is None:
         # Output is redirected to a file
         sys.stdout = codecs.getwriter('utf8')(sys.stdout)
-    print version.BANNER
+    print(version.BANNER)
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument('target', action='store', help='[[domain/]username[:password]@]<targetName or address>')
     parser.add_argument('maxRid', action='store', default = '4000', nargs='?', help='max Rid to check (default 4000)')
+    parser.add_argument('-ts', action='store_true', help='Adds timestamp to every logging output')
 
     group = parser.add_argument_group('connection')
 
     group.add_argument('-target-ip', action='store', metavar="ip address", help='IP Address of the target machine. '
-                       'If ommited it will use whatever was specified as target. This is useful when target is the '
+                       'If omitted it will use whatever was specified as target. This is useful when target is the '
                        'NetBIOS name and you cannot resolve it')
     group.add_argument('-port', choices=['135', '139', '445'], nargs='?', default='445', metavar="destination port",
                        help='Destination port to connect to SMB Server')
@@ -168,6 +169,9 @@ if __name__ == '__main__':
         sys.exit(1)
 
     options = parser.parse_args()
+
+    # Init the example's logger theme
+    logger.init(options.ts)
 
     import re
 

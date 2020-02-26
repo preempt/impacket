@@ -71,8 +71,8 @@ class PSEXEC:
         self.__copyFile = copyFile
         self.__doKerberos = doKerberos
         self.__kdcHost = kdcHost
-		self.__serviceName = serviceName
-		self.__remoteBinaryName = remoteBinaryName
+        self.__serviceName = serviceName
+        self.__remoteBinaryName = remoteBinaryName
         self.__kdcHostTargetDomain = kdcHostTargetDomain
         if hashes is not None:
             self.__lmhash, self.__nthash = hashes.split(':')

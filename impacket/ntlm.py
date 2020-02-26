@@ -907,14 +907,14 @@ def computeResponseNTLMv2(flags, serverChallenge, clientChallenge, serverName, d
         # get access denied
         # This is set at Local Security Policy -> Local Policies -> Security Options -> Server SPN target name validation
         # level
-	    if TEST_CASE is False:
-	        av_pairs[NTLMSSP_AV_TARGET_NAME] = 'cifs/'.encode('utf-16le') + av_pairs[NTLMSSP_AV_HOSTNAME][1]
-	        if av_pairs[NTLMSSP_AV_TIME] is not None:
-	           aTime = av_pairs[NTLMSSP_AV_TIME][1]
-	        else:
-	           aTime = struct.pack('<q', (116444736000000000 + calendar.timegm(time.gmtime()) * 10000000) )
-	           av_pairs[NTLMSSP_AV_TIME] = aTime
-	        serverName = av_pairs.getData()
+        if TEST_CASE is False:
+            av_pairs[NTLMSSP_AV_TARGET_NAME] = 'cifs/'.encode('utf-16le') + av_pairs[NTLMSSP_AV_HOSTNAME][1]
+            if av_pairs[NTLMSSP_AV_TIME] is not None:
+               aTime = av_pairs[NTLMSSP_AV_TIME][1]
+            else:
+               aTime = struct.pack('<q', (116444736000000000 + calendar.timegm(time.gmtime()) * 10000000) )
+               av_pairs[NTLMSSP_AV_TIME] = aTime
+            serverName = av_pairs.getData()
     else:
         aTime = b'\x00'*8
 

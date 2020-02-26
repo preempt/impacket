@@ -298,7 +298,7 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
         seq_set_iter(reqBody, 'etype', ( (int(cipher.enctype),)))
 
         try:
-        	tgt = sendReceive(encoder.encode(asReq), domain, kdcHost, srcIp=srcIp) 
+            tgt = sendReceive(encoder.encode(asReq), domain, kdcHost, srcIp=srcIp)
         except Exception as e:
             if str(e).find('KDC_ERR_ETYPE_NOSUPP') >= 0:
                 if lmhash == b'' and nthash == b'' and (aesKey == b'' or aesKey is None):
@@ -463,8 +463,8 @@ def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, srcIp=N
             if "WRONG_REALM" in str(e):
                 LOG.info("Received wrong realm error, switching to DNS resolution mode")
                 return getKerberosTGS(serverName, domain, None, r, cipher, newSessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
-			else
-				raise
+            else:
+                raise
 
 ################################################################################
 # DCE RPC Helpers

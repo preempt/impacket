@@ -61,7 +61,7 @@ RE_EX_ATTRIBUTE_2 = re.compile(r'^(){0}%s?%s$' % (DN, MATCHING_RULE), re.I)
 
 
 class LDAPConnection:
-    def __init__(self, url, baseDN='', dstIp=None, srcIp=None, port=None, tls=None,
+    def __init__(self, url, baseDN='', dstIp=None, srcIp=None, port=None,
                  certPath=None, verifyMode=None, callback=None):
         """
         LDAPConnection class
@@ -71,7 +71,6 @@ class LDAPConnection:
         :param string dstIp:
         :param string srcIp:
         :param integer port:
-        :param integer tls:
         :param String certPath:
         :param integer verifyMode:
         :param Function callback:
@@ -92,7 +91,6 @@ class LDAPConnection:
             self._dstHost = url[7:]
         elif url.startswith('ldaps://'):
             self._dstPort = port if port else 636
-            self.tls = tls if tls else SSL.TLSv1_2_METHOD
             self.certPath = certPath
             self.verifyMode = verifyMode
             self.callback = callback
@@ -112,28 +110,44 @@ class LDAPConnection:
             targetHost = self._dstHost
 
         LOG.debug('Connecting to %s, port %d, SSL %s' % (targetHost, self._dstPort, self._SSL))
-        try:
-            af, socktype, proto, _, sa = socket.getaddrinfo(targetHost, self._dstPort, 0, socket.SOCK_STREAM)[0]
-            self._socket = socket.socket(af, socktype, proto)
-        except socket.error as e:
-            raise socket.error('Connection error (%s:%d)' % (targetHost, 88), e)
 
-        if self._SSL is False:
-            if srcIp:
-                self._socket.bind((srcIp, 0))
-            self._socket.connect(sa)
-        else:
-            # Switching to TLS now
-            ctx = SSL.Context(self.tls)
-            if self.certPath is not None:
-                ctx.load_verify_locations(cafile=self.certPath)
-                ctx.set_verify(self.verifyMode, self.callback)
-            # ctx.set_cipher_list('RC4')
-            self._socket = SSL.Connection(ctx, self._socket)
-            if srcIp:
-                self._socket.bind((srcIp, 0))
-            self._socket.connect(sa)
-            self._socket.do_handshake()
+        methods = [SSL.TLSv1_2_METHOD,
+                   SSL.TLSv1_1_METHOD,
+                   SSL.TLSv1_METHOD]
+        connection_exception = None
+        for tls in methods:
+            try:
+                af, socktype, proto, _, sa = socket.getaddrinfo(targetHost, self._dstPort, 0, socket.SOCK_STREAM)[0]
+                self._socket = socket.socket(af, socktype, proto)
+            except socket.error as e:
+                raise socket.error('Connection error (%s:%d)' % (targetHost, 88), e)
+
+            if self._SSL is False:
+                if srcIp:
+                    self._socket.bind((srcIp, 0))
+                self._socket.connect(sa)
+                return
+            else:
+                # Switching to TLS now
+                ctx = SSL.Context(tls)
+                if self.certPath is not None:
+                    ctx.load_verify_locations(cafile=self.certPath)
+                    ctx.set_verify(self.verifyMode, self.callback)
+                # ctx.set_cipher_list('RC4')
+                self._socket = SSL.Connection(ctx, self._socket)
+                if srcIp:
+                    self._socket.bind((srcIp, 0))
+                self._socket.connect(sa)
+                try:
+                    self._socket.do_handshake()
+                    return
+                except Exception as e:
+                    connection_exception = e
+                    LOG.debug('Connection error to %s, port %d, SSL %s, TLS method %d' % (
+                        targetHost, self._dstPort, self._SSL, tls))
+                    continue
+        if connection_exception is not None:
+            raise RuntimeError("Connection error: %s" % connection_exception)
 
     def kerberosLogin(self, user, password, domain='', lmhash='', nthash='', aesKey='', kdcHost=None, TGT=None,
                       TGS=None, useCache=True, kdcHostTargetDomain=None):

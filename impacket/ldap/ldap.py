@@ -31,6 +31,7 @@ from impacket import LOG
 from impacket.ldap.ldapasn1 import *
 from impacket.ntlm import getNTLMSSPType1, getNTLMSSPType3
 from impacket.spnego import SPNEGO_NegTokenInit, TypesMech
+from impacket.krb5.gssapi import ZEROED_CHANNEL_BINDINGS, calc_channel_binding
 
 try:
     import OpenSSL
@@ -149,6 +150,9 @@ class LDAPConnection:
         if connection_exception is not None:
             raise RuntimeError("Connection error: %s" % connection_exception)
 
+    def getCertificateFingerPrint(self):
+        return str(self._socket.get_peer_certificate().digest("SHA256")).replace(":", "")
+
     def kerberosLogin(self, user, password, domain='', lmhash='', nthash='', aesKey='', kdcHost=None, TGT=None,
                       TGS=None, useCache=True, kdcHostTargetDomain=None):
         """
@@ -182,6 +186,7 @@ class LDAPConnection:
         # Importing down here so pyasn1 is not required if kerberos is not used.
         from impacket.krb5.ccache import CCache
         from impacket.krb5.asn1 import AP_REQ, Authenticator, TGS_REP, seq_set
+        from impacket.krb5.gssapi import CheckSumField, GSS_C_SEQUENCE_FLAG, GSS_C_REPLAY_FLAG
         from impacket.krb5.kerberosv5 import getKerberosTGT, getKerberosTGS
         from impacket.krb5 import constants
         from impacket.krb5.types import Principal, KerberosTime, Ticket
@@ -276,6 +281,15 @@ class LDAPConnection:
         authenticator['cusec'] = now.microsecond
         authenticator['ctime'] = KerberosTime.to_asn1(now)
 
+        authenticator['cksum'] = noValue
+        authenticator['cksum']['cksumtype'] = 0x8003
+        chkField = CheckSumField()
+        chkField['Lgth'] = 16
+        chkField['Flags'] = GSS_C_SEQUENCE_FLAG | GSS_C_REPLAY_FLAG
+
+        chkField['Bnd'] = calc_channel_binding(self.getCertificateFingerPrint()) if self._SSL else ZEROED_CHANNEL_BINDINGS
+        authenticator['cksum']['checksum'] = chkField.getData()
+
         encodedAuthenticator = encoder.encode(authenticator)
 
         # Key Usage 11
@@ -308,7 +322,7 @@ class LDAPConnection:
 
         return True
 
-    def login(self, user='', password='', domain='', lmhash='', nthash='', authenticationChoice='sicilyNegotiate', insert_channel_binding=False, server_cert='\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'):
+    def login(self, user='', password='', domain='', lmhash='', nthash='', authenticationChoice='sicilyNegotiate', insert_channel_binding=True, override_server_cert=None):
         """
         logins into the target system
 
@@ -361,7 +375,15 @@ class LDAPConnection:
             type2 = response['bindResponse']['matchedDN']
 
             # NTLM Auth
-            type3, exportedSessionKey = getNTLMSSPType3(negotiate, str(type2), user, password, domain, lmhash, nthash, insert_channel_binding=insert_channel_binding, server_cert=server_cert)
+            if override_server_cert:
+                cert_hash = override_server_cert
+            else:
+                cert_hash = calc_channel_binding(self.getCertificateFingerPrint()) if self._SSL \
+                    else ZEROED_CHANNEL_BINDINGS
+            type3, exportedSessionKey = getNTLMSSPType3(
+                negotiate, str(type2), user, password, domain, lmhash, nthash,
+                insert_channel_binding=insert_channel_binding,
+                server_cert=cert_hash)
             bindRequest['authentication']['sicilyResponse'] = type3
             response = self.sendReceive(bindRequest)[0]['protocolOp']
         else:

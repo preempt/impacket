@@ -43,6 +43,18 @@ KG_USAGE_INITIATOR_SIGN = 25
 
 KRB5_AP_REQ = struct.pack('<H', 0x1)
 
+ZEROED_CHANNEL_BINDINGS = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+
+def calc_channel_binding(certificate_hash):
+    import struct
+    import hashlib
+    certificate_digest = certificate_hash.replace(':', '').decode('hex')
+    apdata = 'tls-server-end-point:' + certificate_digest
+    cbtstruct = '\x00' * 4 * 4 + struct.pack('<I', len(apdata)) + apdata
+    m = hashlib.md5()
+    m.update(cbtstruct)
+    return m.digest()
+
 # 1.1.1. Initial Token - Checksum field
 class CheckSumField(Structure):
     structure = (

@@ -3035,6 +3035,8 @@ class SMB:
         # Importing down here so pyasn1 is not required if kerberos is not used.
         from impacket.krb5.asn1 import AP_REQ, Authenticator, TGS_REP, seq_set
         from impacket.krb5.kerberosv5 import getKerberosTGT, getKerberosTGS
+        from impacket.krb5.gssapi import CheckSumField, GSS_C_SEQUENCE_FLAG, GSS_C_REPLAY_FLAG, \
+            ZEROED_CHANNEL_BINDINGS
         from impacket.krb5 import constants
         from impacket.krb5.types import Principal, KerberosTime, Ticket
         from pyasn1.codec.der import decoder, encoder
@@ -3139,6 +3141,15 @@ class SMB:
 
         authenticator['cusec'] = now.microsecond
         authenticator['ctime'] = KerberosTime.to_asn1(now)
+
+        authenticator['cksum'] = noValue
+        authenticator['cksum']['cksumtype'] = 0x8003
+        chkField = CheckSumField()
+        chkField['Lgth'] = 16
+        chkField['Flags'] = GSS_C_SEQUENCE_FLAG | GSS_C_REPLAY_FLAG
+
+        chkField['Bnd'] = ZEROED_CHANNEL_BINDINGS
+        authenticator['cksum']['checksum'] = chkField.getData()
 
         encodedAuthenticator = encoder.encode(authenticator)
 

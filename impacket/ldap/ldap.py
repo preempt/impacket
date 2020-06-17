@@ -78,6 +78,8 @@ class LDAPConnection:
 
         :return: a LDAP instance, if not raises a LDAPSessionError exception
         """
+        if verifyMode and verifyMode != SSL.VERIFY_NONE and not callback:
+            raise RuntimeError("When veryfing TLS certificate callback must be included")
         self._SSL = False
         self._dstPort = 0
         self._dstHost = 0
@@ -131,8 +133,9 @@ class LDAPConnection:
             else:
                 # Switching to TLS now
                 ctx = SSL.Context(tls)
-                if self.certPath is not None:
-                    ctx.load_verify_locations(cafile=self.certPath)
+                if verifyMode and verifyMode != SSL.VERIFY_NONE:
+                    if self.certPath is not None:
+                        ctx.load_verify_locations(cafile=self.certPath)
                     ctx.set_verify(self.verifyMode, self.callback)
                 # ctx.set_cipher_list('RC4')
                 self._socket = SSL.Connection(ctx, self._socket)

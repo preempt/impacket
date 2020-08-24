@@ -289,6 +289,120 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
 
     return tgt, cipher, key, sessionKey
 
+def getKerberosReferal(sourceRealm, targetRealm, kdcHost, tgt, cipher, sessionKey, srcIp=None, kdcHostTargetDomain=None):
+
+    # Decode the TGT
+    try:
+        decodedTGT = decoder.decode(tgt, asn1Spec = AS_REP())[0]
+    except:
+        decodedTGT = decoder.decode(tgt, asn1Spec = TGS_REP())[0]
+
+    domain = sourceRealm.upper()
+    # Extract the ticket from the TGT
+    ticket = Ticket()
+    ticket.from_asn1(decodedTGT['ticket'])
+
+    apReq = AP_REQ()
+    apReq['pvno'] = 5
+    apReq['msg-type'] = int(constants.ApplicationTagNumbers.AP_REQ.value)
+
+    opts = list()
+    apReq['ap-options'] =  constants.encodeFlags(opts)
+    seq_set(apReq,'ticket', ticket.to_asn1)
+
+    authenticator = Authenticator()
+    authenticator['authenticator-vno'] = 5
+    authenticator['crealm'] = str(decodedTGT['crealm'])
+
+    clientName = Principal()
+    clientName.from_asn1( decodedTGT, 'crealm', 'cname')
+
+    seq_set(authenticator, 'cname', clientName.components_to_asn1)
+
+    now = datetime.datetime.utcnow()
+    authenticator['cusec'] =  now.microsecond
+    authenticator['ctime'] = KerberosTime.to_asn1(now)
+
+    encodedAuthenticator = encoder.encode(authenticator)
+
+    # Key Usage 7
+    # TGS-REQ PA-TGS-REQ padata AP-REQ Authenticator (includes
+    # TGS authenticator subkey), encrypted with the TGS session
+    # key (Section 5.5.1)
+    encryptedEncodedAuthenticator = cipher.encrypt(sessionKey, 7, encodedAuthenticator, None)
+
+    apReq['authenticator'] = noValue
+    apReq['authenticator']['etype'] = cipher.enctype
+    apReq['authenticator']['cipher'] = encryptedEncodedAuthenticator
+
+    encodedApReq = encoder.encode(apReq)
+
+    tgsReq = TGS_REQ()
+
+    tgsReq['pvno'] =  5
+    tgsReq['msg-type'] = int(constants.ApplicationTagNumbers.TGS_REQ.value)
+    tgsReq['padata'] = noValue
+    tgsReq['padata'][0] = noValue
+    tgsReq['padata'][0]['padata-type'] = int(constants.PreAuthenticationDataTypes.PA_TGS_REQ.value)
+    tgsReq['padata'][0]['padata-value'] = encodedApReq
+
+    reqBody = seq_set(tgsReq, 'req-body')
+
+    opts = list()
+
+    reqBody['kdc-options'] = constants.encodeFlags(opts)
+    serverName = Principal("krbtgt/%s" % targetRealm.upper(), type=constants.PrincipalNameType.NT_SRV_INST.value)
+    seq_set(reqBody, 'sname', serverName.components_to_asn1)
+    reqBody['realm'] = domain
+
+    now = datetime.datetime.utcnow() + datetime.timedelta(days=1)
+
+    reqBody['till'] = KerberosTime.to_asn1(now)
+    reqBody['nonce'] = random.getrandbits(31)
+    seq_set_iter(reqBody, 'etype',
+                      (
+                          int(constants.EncryptionTypes.rc4_hmac.value),
+                          int(constants.EncryptionTypes.aes128_cts_hmac_sha1_96.value),
+                          int(constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value),
+                       )
+                )
+
+    message = encoder.encode(tgsReq)
+
+    r = sendReceive(message, domain, kdcHost, srcIp=srcIp)
+
+    # Get the session key
+
+    tgs = decoder.decode(r, asn1Spec = TGS_REP())[0]
+
+    cipherText = tgs['enc-part']['cipher']
+
+    # Key Usage 8
+    # TGS-REP encrypted part (includes application session
+    # key), encrypted with the TGS session key (Section 5.4.2)
+    plainText = cipher.decrypt(sessionKey, 8, str(cipherText))
+
+    encTGSRepPart = decoder.decode(plainText, asn1Spec = EncTGSRepPart())[0]
+
+    newSessionKey = Key(encTGSRepPart['key']['keytype'], str(encTGSRepPart['key']['keyvalue']))
+    # Creating new cipher based on received keytype
+    cipher = _enctype_table[encTGSRepPart['key']['keytype']]
+
+    # Check we've got what we asked for
+    res = decoder.decode(r, asn1Spec = TGS_REP())[0]
+    spn = Principal()
+    spn.from_asn1(res['ticket'], 'realm', 'sname')
+
+    if spn.components[0] == serverName.components[0]:
+        # Yes.. bye bye
+        return r, cipher, sessionKey, newSessionKey
+    else:
+        # Could be multi referrals so lets leave this code - but this will be done based on DNS resolve
+        # Let's extract the Ticket, change the domain and keep asking
+        domain = spn.components[1]
+        LOG.info("Received referral to domain:%s" % domain)
+        return getKerberosTGS(serverName, domain, None, r, cipher, newSessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
+
 def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, srcIp=None, kdcHostTargetDomain=None):
 
     # Decode the TGT
@@ -651,4 +765,3 @@ class KerberosError(SessionError):
             pass
 
         return retString
-

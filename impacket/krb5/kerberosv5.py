@@ -289,7 +289,7 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
 
     return tgt, cipher, key, sessionKey
 
-def getKerberosReferal(sourceRealm, targetRealm, kdcHost, tgt, cipher, sessionKey, srcIp=None, kdcHostTargetDomain=None):
+def getKerberosReferal(sourceRealm, targetRealm, kdcHost, tgt, cipher, sessionKey, srcIp=None):
 
     # Decode the TGT
     try:
@@ -401,7 +401,7 @@ def getKerberosReferal(sourceRealm, targetRealm, kdcHost, tgt, cipher, sessionKe
         # Let's extract the Ticket, change the domain and keep asking
         domain = spn.components[1]
         LOG.info("Received referral to domain:%s" % domain)
-        return getKerberosTGS(serverName, domain, None, r, cipher, newSessionKey, kdcHostTargetDomain=kdcHostTargetDomain)
+        return getKerberosReferal(targetRealm, domain, domain, r, cipher, newSessionKey)
 
 def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, srcIp=None, kdcHostTargetDomain=None):
 

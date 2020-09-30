@@ -74,9 +74,7 @@ def sendReceive(data, host, kdcHost, srcIp=None):
 
     return r
 
-def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcHost=None, requestPAC=True, srcIp=None):
-    
-    asReq = AS_REQ()
+def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcHost=None, requestPAC=True, srcIp=None, triggerPreAuthError=True):
 
     domain = domain.upper()
     serverName = Principal('krbtgt/%s'%domain, type=constants.PrincipalNameType.NT_PRINCIPAL.value)  
@@ -85,106 +83,118 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
     pacRequest['include-pac'] = requestPAC
     encodedPacRequest = encoder.encode(pacRequest)
 
-    asReq['pvno'] = 5
-    asReq['msg-type'] =  int(constants.ApplicationTagNumbers.AS_REQ.value)
+    if triggerPreAuthError:
+        asReq = AS_REQ()
 
-    asReq['padata'] = noValue
-    asReq['padata'][0] = noValue
-    asReq['padata'][0]['padata-type'] = int(constants.PreAuthenticationDataTypes.PA_PAC_REQUEST.value)
-    asReq['padata'][0]['padata-value'] = encodedPacRequest
+        asReq['pvno'] = 5
+        asReq['msg-type'] =  int(constants.ApplicationTagNumbers.AS_REQ.value)
 
-    reqBody = seq_set(asReq, 'req-body')
+        asReq['padata'] = noValue
+        asReq['padata'][0] = noValue
+        asReq['padata'][0]['padata-type'] = int(constants.PreAuthenticationDataTypes.PA_PAC_REQUEST.value)
+        asReq['padata'][0]['padata-value'] = encodedPacRequest
 
-    opts = list()
-    opts.append( constants.KDCOptions.forwardable.value )
-    opts.append( constants.KDCOptions.renewable.value )
-    opts.append( constants.KDCOptions.proxiable.value )
-    reqBody['kdc-options']  = constants.encodeFlags(opts)
+        reqBody = seq_set(asReq, 'req-body')
 
-    seq_set(reqBody, 'sname', serverName.components_to_asn1)
-    seq_set(reqBody, 'cname', clientName.components_to_asn1)
+        opts = list()
+        opts.append( constants.KDCOptions.forwardable.value )
+        opts.append( constants.KDCOptions.renewable.value )
+        opts.append( constants.KDCOptions.proxiable.value )
+        reqBody['kdc-options']  = constants.encodeFlags(opts)
 
-    if domain == '':
-        raise Exception('Empty Domain not allowed in Kerberos')
+        seq_set(reqBody, 'sname', serverName.components_to_asn1)
+        seq_set(reqBody, 'cname', clientName.components_to_asn1)
 
-    reqBody['realm'] = domain
+        if domain == '':
+            raise Exception('Empty Domain not allowed in Kerberos')
 
-    now = datetime.datetime.utcnow() + datetime.timedelta(days=1)
-    reqBody['till'] = KerberosTime.to_asn1(now)
-    reqBody['rtime'] = KerberosTime.to_asn1(now)
-    reqBody['nonce'] =  random.getrandbits(31)
+        reqBody['realm'] = domain
 
-    # Yes.. this shouldn't happend but it's inherited from the past
-    if aesKey is None:
-        aesKey = ''
+        now = datetime.datetime.utcnow() + datetime.timedelta(days=1)
+        reqBody['till'] = KerberosTime.to_asn1(now)
+        reqBody['rtime'] = KerberosTime.to_asn1(now)
+        reqBody['nonce'] =  random.getrandbits(31)
 
-    if nthash == '':
-        # This is still confusing. I thought KDC_ERR_ETYPE_NOSUPP was enough, 
-        # but I found some systems that accepts all ciphers, and trigger an error 
-        # when requesting subsequent TGS :(. More research needed.
-        # So, in order to support more than one cypher, I'm setting aes first
-        # since most of the systems would accept it. If we're lucky and 
-        # KDC_ERR_ETYPE_NOSUPP is returned, we will later try rc4.
-        if aesKey != '':
-            if len(aesKey) == 64:
-                supportedCiphers = (int(constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value),)
+        # Yes.. this shouldn't happend but it's inherited from the past
+        if aesKey is None:
+            aesKey = ''
+
+        if nthash == '':
+            # This is still confusing. I thought KDC_ERR_ETYPE_NOSUPP was enough,
+            # but I found some systems that accepts all ciphers, and trigger an error
+            # when requesting subsequent TGS :(. More research needed.
+            # So, in order to support more than one cypher, I'm setting aes first
+            # since most of the systems would accept it. If we're lucky and
+            # KDC_ERR_ETYPE_NOSUPP is returned, we will later try rc4.
+            if aesKey != '':
+                if len(aesKey) == 64:
+                    supportedCiphers = (int(constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value),)
+                else:
+                    supportedCiphers = (int(constants.EncryptionTypes.aes128_cts_hmac_sha1_96.value),)
             else:
-                supportedCiphers = (int(constants.EncryptionTypes.aes128_cts_hmac_sha1_96.value),)
+                supportedCiphers = (int(constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value),)
         else:
-            supportedCiphers = (int(constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value),)
+            # We have hashes to try, only way is to request RC4 only
+            supportedCiphers = (int(constants.EncryptionTypes.rc4_hmac.value),)
+
+        seq_set_iter(reqBody, 'etype', supportedCiphers)
+
+        message = encoder.encode(asReq)
+
+        try:
+            r = sendReceive(message, domain, kdcHost, srcIp=srcIp)
+        except KerberosError, e:
+            if e.getErrorCode() == constants.ErrorCodes.KDC_ERR_ETYPE_NOSUPP.value:
+                if supportedCiphers[0] in (constants.EncryptionTypes.aes128_cts_hmac_sha1_96.value, constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value) and aesKey is '':
+                    supportedCiphers = (int(constants.EncryptionTypes.rc4_hmac.value),)
+                    seq_set_iter(reqBody, 'etype', supportedCiphers)
+                    message = encoder.encode(asReq)
+                    r = sendReceive(message, domain, kdcHost, srcIp=srcIp)
+                else:
+                    raise
+            else:
+                raise
+
+        # This should be the PREAUTH_FAILED packet
+
+        asRep = decoder.decode(r, asn1Spec = KRB_ERROR())[0]
+        methods = decoder.decode(str(asRep['e-data']), asn1Spec=METHOD_DATA())[0]
+        salt = ''
+        encryptionTypesData = dict()
+        for method in methods:
+            if method['padata-type'] == constants.PreAuthenticationDataTypes.PA_ETYPE_INFO2.value:
+                etypes2 = decoder.decode(str(method['padata-value']), asn1Spec = ETYPE_INFO2())[0]
+                for etype2 in etypes2:
+                    try:
+                        if etype2['salt'] is None or etype2['salt'].hasValue() is False:
+                            salt = ''
+                        else:
+                            salt = str(etype2['salt'])
+                    except PyAsn1Error, e:
+                        salt = ''
+
+                    encryptionTypesData[etype2['etype']] = salt
+            elif method['padata-type'] == constants.PreAuthenticationDataTypes.PA_ETYPE_INFO.value:
+                etypes = decoder.decode(str(method['padata-value']), asn1Spec = ETYPE_INFO())[0]
+                for etype in etypes:
+                    try:
+                        if etype['salt'] is None or etype['salt'].hasValue() is False:
+                            salt = ''
+                        else:
+                            salt = str(etype['salt'])
+                    except PyAsn1Error, e:
+                        salt = ''
+
+                    encryptionTypesData[etype['etype']] = salt
+
     else:
-        # We have hashes to try, only way is to request RC4 only
+        if not password and not nthash:
+            raise NotImplementedError("Skipping Pre-Auth Is supported only with password / nthash inputs")
         supportedCiphers = (int(constants.EncryptionTypes.rc4_hmac.value),)
 
-    seq_set_iter(reqBody, 'etype', supportedCiphers)
-
-    message = encoder.encode(asReq)
-
-    try:
-        r = sendReceive(message, domain, kdcHost, srcIp=srcIp)
-    except KerberosError, e:
-        if e.getErrorCode() == constants.ErrorCodes.KDC_ERR_ETYPE_NOSUPP.value:
-            if supportedCiphers[0] in (constants.EncryptionTypes.aes128_cts_hmac_sha1_96.value, constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value) and aesKey is '':
-                supportedCiphers = (int(constants.EncryptionTypes.rc4_hmac.value),)
-                seq_set_iter(reqBody, 'etype', supportedCiphers)
-                message = encoder.encode(asReq)
-                r = sendReceive(message, domain, kdcHost, srcIp=srcIp)
-            else: 
-                raise 
-        else:
-            raise 
-
-    # This should be the PREAUTH_FAILED packet
-    
-    asRep = decoder.decode(r, asn1Spec = KRB_ERROR())[0]
-    methods = decoder.decode(str(asRep['e-data']), asn1Spec=METHOD_DATA())[0]
-    salt = ''
-    encryptionTypesData = dict()
-    for method in methods:
-        if method['padata-type'] == constants.PreAuthenticationDataTypes.PA_ETYPE_INFO2.value:
-            etypes2 = decoder.decode(str(method['padata-value']), asn1Spec = ETYPE_INFO2())[0]
-            for etype2 in etypes2:
-                try:
-                    if etype2['salt'] is None or etype2['salt'].hasValue() is False:
-                        salt = ''
-                    else:
-                        salt = str(etype2['salt'])
-                except PyAsn1Error, e:
-                    salt = ''
-
-                encryptionTypesData[etype2['etype']] = salt
-        elif method['padata-type'] == constants.PreAuthenticationDataTypes.PA_ETYPE_INFO.value:
-            etypes = decoder.decode(str(method['padata-value']), asn1Spec = ETYPE_INFO())[0]
-            for etype in etypes:
-                try:
-                    if etype['salt'] is None or etype['salt'].hasValue() is False:
-                        salt = ''
-                    else:
-                        salt = str(etype['salt'])
-                except PyAsn1Error, e:
-                    salt = ''
-
-                encryptionTypesData[etype['etype']] = salt
+        encryptionTypesData = dict()
+        salt = ''
+        encryptionTypesData[supportedCiphers[0]] = salt
 
     enctype = supportedCiphers[0]
 

@@ -188,7 +188,7 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
                     encryptionTypesData[etype['etype']] = salt
 
     else:
-        if not password and not nthash:
+        if password is None and not nthash:
             raise NotImplementedError("Skipping Pre-Auth Is supported only with password / nthash inputs")
         supportedCiphers = (int(constants.EncryptionTypes.rc4_hmac.value),)
 

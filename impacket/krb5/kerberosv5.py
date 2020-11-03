@@ -393,7 +393,7 @@ def getKerberosReferal(sourceRealm, targetRealm, kdcHost, tgt, cipher, sessionKe
     spn = Principal()
     spn.from_asn1(res['ticket'], 'realm', 'sname')
 
-    if spn.components[0] == serverName.components[0]:
+    if spn.components[1] == serverName.components[1]:
         # Yes.. bye bye
         return r, cipher, sessionKey, newSessionKey
     else:
@@ -401,7 +401,7 @@ def getKerberosReferal(sourceRealm, targetRealm, kdcHost, tgt, cipher, sessionKe
         # Let's extract the Ticket, change the domain and keep asking
         domain = spn.components[1]
         LOG.info("Received referral to domain:%s" % domain)
-        return getKerberosReferal(targetRealm, domain, domain, r, cipher, newSessionKey)
+        return getKerberosReferal(domain, targetRealm, domain, r, cipher, newSessionKey)
 
 def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, srcIp=None, kdcHostTargetDomain=None):
 

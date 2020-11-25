@@ -27,6 +27,7 @@ from impacket.krb5.asn1 import AS_REP, seq_set, TGS_REP, EncTGSRepPart, EncASRep
 from impacket import LOG
 
 DELTA_TIME = 1
+DEFAULT_MAX_CREDS_COUNT = 10
 
 class Header(Structure):
     structure = (
@@ -303,7 +304,7 @@ class CCache:
             ('headerlen','!H=12'),
         )
 
-    def __init__(self, data = None):
+    def __init__(self, data = None, max_cred_count=DEFAULT_MAX_CREDS_COUNT):
         self.headers = None
         self.principal = None
         self.credentials = []
@@ -328,7 +329,7 @@ class CCache:
         
             # Now let's parse the credentials
             self.credentials = []
-            while len(data) > 0:
+            while len(data) > 0 and len(self.credentials) <= max_cred_count:
                 cred = Credential(data)
                 self.credentials.append(cred)
                 data = data[len(cred.getData()):]
@@ -506,11 +507,11 @@ class CCache:
         self.credentials.append(credential)
 
     @classmethod
-    def loadFile(cls, fileName):
+    def loadFile(cls, fileName, max_creds_count=DEFAULT_MAX_CREDS_COUNT):
         f = open(fileName,'rb')
         data = f.read()
         f.close()
-        return cls(data)
+        return cls(data, max_cred_count=max_creds_count)
 
     def saveFile(self, fileName):
         f = open(fileName,'wb+')
